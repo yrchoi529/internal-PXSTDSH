@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Internal Report</title>
+<!-- Search engine & crawler blocking -->
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex" />
+<meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet" />
+<meta name="bingbot" content="noindex, nofollow, noarchive, nosnippet" />
+<meta name="slurp" content="noindex, nofollow, noarchive" />
+<!-- Prevent URL leak via referrer header -->
+<meta name="referrer" content="no-referrer" />
+<!-- Prevent embedding on untrusted sites (allow Notion) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    background: #f3f4f6;
+    color: #111827;
+    height: 100%;
+  }
+  .layout { display: flex; min-height: 100vh; }
+  /* Sidebar */
+  .sidebar {
+    width: 250px;
+    background: #1e3a5f;
+    color: #e5e7eb;
+    padding: 24px 0;
+    flex-shrink: 0;
+  }
+  .sidebar .logo {
+    padding: 0 24px 20px 24px;
+    font-size: 18px;
+    font-weight: 700;
+    color: white;
+    border-bottom: 1px solid #2d4a73;
+    margin-bottom: 16px;
+  }
+  .sidebar .logo .sub {
+    display: block; font-size: 11px; font-weight: 400; color: #9db4d4; margin-top: 4px;
+  }
+  .sidebar .group-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+    color: #6f8aab; padding: 12px 24px 6px 24px; font-weight: 600;
+  }
+  .sidebar .nav-item {
+    display: block; padding: 10px 24px; cursor: pointer; font-size: 14px;
+    color: #cbd5e1; border-left: 3px solid transparent;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .sidebar .nav-item:hover { background: #2d4a73; color: white; }
+  .sidebar .nav-item.active { background: #2d4a73; color: white; border-left-color: #60a5fa; font-weight: 600; }
+
+  /* Main */
+  .main { flex: 1; padding: 24px 32px; overflow-x: hidden; }
+  .topbar {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 20px; flex-wrap: wrap; gap: 16px;
+  }
+  .topbar h1 { margin: 0; font-size: 22px; font-weight: 700; color: #1e3a5f; }
+  .topbar h1 .sub { display: block; font-size: 13px; font-weight: 400; color: #6b7280; margin-top: 4px; }
+  .controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .control-group { display: flex; align-items: center; gap: 6px; background: white; padding: 8px 12px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+  .control-group label { font-size: 12px; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+  .control-group select { border: none; background: transparent; font-size: 14px; font-weight: 600; color: #1e3a5f; cursor: pointer; outline: none; padding: 2px 4px; }
+  .file-loader {
+    background: #1e3a5f; color: white; border: none; padding: 8px 14px;
+    border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .file-loader:hover { background: #2d4a73; }
+  .file-status { font-size: 12px; color: #6b7280; }
+
+  /* Section labels (like "Summary", "AUX Time Breakdown") */
+  .section-label {
+    font-size: 13px; font-weight: 700; color: #1e3a5f; margin: 24px 0 10px 0;
+    padding-left: 10px; border-left: 4px solid #60a5fa;
+  }
+
+  /* KPI Cards */
+  .kpi-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 14px;
+  }
+  .kpi-card {
+    background: white; padding: 16px 18px; border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .kpi-card .label {
+    font-size: 11px; font-weight: 700; color: #6b7280;
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;
+  }
+  .kpi-card .value {
+    font-size: 28px; font-weight: 700; color: #1e3a5f; line-height: 1;
+  }
+  .kpi-card .value.green { color: #059669; }
+  .kpi-card .value.red { color: #dc2626; }
+  .kpi-card .delta {
+    font-size: 12px; margin-top: 6px; font-weight: 600;
+  }
+  .kpi-card .delta.up { color: #dc2626; }
+  .kpi-card .delta.down { color: #059669; }
+  .kpi-card .delta.flat { color: #6b7280; }
+  .kpi-card .delta.up-good { color: #059669; }
+  .kpi-card .delta.down-bad { color: #dc2626; }
+  .kpi-card .footer {
+    font-size: 11px; color: #9ca3af; margin-top: 4px;
+  }
+
+  /* Chart cards */
+  .chart-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+  }
+  .chart-grid.three { grid-template-columns: 2fr 1fr; }
+  @media (max-width: 1100px) { .chart-grid, .chart-grid.three { grid-template-columns: 1fr; } }
+  .chart-card {
+    background: white; border-radius: 10px; padding: 18px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    min-height: 320px;
+    display: flex; flex-direction: column;
+  }
+  .chart-card .chart-title {
+    font-size: 14px; font-weight: 700; color: #374151; margin-bottom: 10px;
+    text-align: center;
+  }
+  .chart-card .canvas-wrap { flex: 1; position: relative; min-height: 260px; }
+
+  /* Table */
+  .table-card {
+    background: white; border-radius: 10px; padding: 18px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: #f9fafb; padding: 10px 12px; text-align: left; color: #6b7280; font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; border-bottom: 2px solid #e5e7eb; }
+  td { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.delta-up { color: #dc2626; font-weight: 600; }
+  td.delta-down { color: #059669; font-weight: 600; }
+  td.delta-flat { color: #9ca3af; }
+  tr:hover td { background: #fafbfd; }
+
+  .empty-state {
+    color: #9ca3af; font-style: italic; text-align: center; padding: 40px;
+    background: white; border-radius: 10px;
+  }
+
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 600;
+  }
+  .badge-yellow { background: #fef3c7; color: #92400e; }
+  .badge-blue { background: #dbeafe; color: #1e40af; }
+
+  /* Password gate */
+  #gate {
+    position: fixed; inset: 0;
+    background: linear-gradient(135deg, #1e3a5f 0%, #0f2441 100%);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 9999;
+  }
+  #gate.hidden { display: none; }
+  .gate-card {
+    background: white; padding: 40px 36px; border-radius: 14px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    width: 380px; max-width: 90vw; text-align: center;
+  }
+  .gate-card .gate-icon {
+    width: 54px; height: 54px; border-radius: 50%;
+    background: #eff6ff; color: #1e3a5f;
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 16px auto; font-size: 24px;
+  }
+  .gate-card h2 { margin: 0 0 6px 0; font-size: 20px; color: #1e3a5f; }
+  .gate-card .hint { color: #6b7280; font-size: 13px; margin: 0 0 24px 0; }
+  .gate-card input {
+    width: 100%; padding: 12px 14px; font-size: 15px;
+    border: 2px solid #e5e7eb; border-radius: 8px;
+    outline: none; transition: border-color 0.15s;
+    margin-bottom: 12px;
+  }
+  .gate-card input:focus { border-color: #3b82f6; }
+  .gate-card button {
+    width: 100%; padding: 12px;
+    background: #1e3a5f; color: white; border: none;
+    border-radius: 8px; font-size: 15px; font-weight: 600;
+    cursor: pointer;
+  }
+  .gate-card button:hover { background: #2d4a73; }
+  .gate-card .error { color: #dc2626; font-size: 13px; margin-top: 12px; min-height: 18px; }
+  #app { visibility: hidden; }
+  #app.unlocked { visibility: visible; }
+</style>
+</head>
+<body>
+
+<!-- Password gate -->
+<div id="gate">
+  <div class="gate-card">
+    <div class="gate-icon">🔒</div>
+    <h2>Internal Access</h2>
+    <p class="hint">Enter the access code to view the dashboard.</p>
+    <input id="gate-input" type="password" placeholder="Access code" autocomplete="off" autofocus />
+    <button id="gate-submit">Unlock</button>
+    <div class="error" id="gate-error">&nbsp;</div>
+  </div>
+</div>
+
+<div id="app">
+<div class="layout">
+  <aside class="sidebar">
+    <div class="logo">
+      Partner Support
+      <span class="sub">Weekly Dashboard</span>
+    </div>
+
+    <div class="group-label">Overview</div>
+    <div class="nav-item" data-l2="__summary__">All Categories</div>
+
+    <div class="group-label">eSIM Support</div>
+    <div class="nav-item" data-l2="eSIM Inquiry">eSIM Inquiry</div>
+    <div class="nav-item" data-l2="eSIM Installation">eSIM Installation</div>
+    <div class="nav-item" data-l2="eSIM Connection">eSIM Connection</div>
+    <div class="nav-item" data-l2="Calling/SMS">Calling / SMS</div>
+    <div class="nav-item" data-l2="User Behavior">User Behavior</div>
+
+    <div class="group-label">PX Support</div>
+    <div class="nav-item" data-l2="Partnership">Partnership</div>
+    <div class="nav-item" data-l2="Partner Platform">Partner Platform</div>
+    <div class="nav-item" data-l2="Integration">Integration</div>
+    <div class="nav-item" data-l2="OTA Partner">OTA Partner</div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <h1 id="page-title">All Categories<span class="sub" id="page-subtitle">Cross-segment overview</span></h1>
+      <div class="controls">
+        <div class="control-group">
+          <label>Week A</label>
+          <select id="weekA"></select>
+        </div>
+        <div class="control-group">
+          <label>Week B</label>
+          <select id="weekB"></select>
+        </div>
+        <label class="file-loader" for="file-input">
+          📄 Load Excel
+          <input id="file-input" type="file" accept=".xlsx" style="display:none" />
+        </label>
+        <span class="file-status" id="file-status">Sample data (W10–W17)</span>
+      </div>
+    </div>
+
+    <div id="dashboard-content"></div>
+  </main>
+</div>
+</div><!-- /#app -->
+
+<script>
+// ============================================================
+// ACCESS GATE (client-side friction layer)
+// ============================================================
+// NOTE: This is client-side and NOT cryptographically secure.
+// A determined user viewing source can extract the hash. It exists to:
+//   - Prevent casual/accidental access (URL shared in screenshots, Slack, etc.)
+//   - Keep search engine preview snippets empty
+//   - Stop bots and unauthenticated page loads
+// For true security, host on a private server with server-side auth.
+const ACCESS_HASH = '5c1fbabd7c5d7c3d614e6a3f0fc76a83e15117f9cfd88853a67766ba36e437d7';
+
+async function sha256Hex(s) {
+  const buf = new TextEncoder().encode(s);
+  const hash = await crypto.subtle.digest('SHA-256', buf);
+  return [...new Uint8Array(hash)].map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+async function tryUnlock(code) {
+  const h = await sha256Hex(code);
+  return h === ACCESS_HASH;
+}
+
+function unlock() {
+  document.getElementById('gate').classList.add('hidden');
+  document.getElementById('app').classList.add('unlocked');
+  try { sessionStorage.setItem('psd_unlocked', '1'); } catch(e) {}
+  bootDashboard();
+}
+
+async function handleSubmit() {
+  const inp = document.getElementById('gate-input');
+  const err = document.getElementById('gate-error');
+  const ok = await tryUnlock(inp.value.trim());
+  if (ok) unlock();
+  else {
+    err.textContent = 'Incorrect code. Try again.';
+    inp.value = '';
+    inp.focus();
+    setTimeout(() => err.textContent = '\u00a0', 3000);
+  }
+}
+
+document.getElementById('gate-submit').addEventListener('click', handleSubmit);
+document.getElementById('gate-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') handleSubmit();
+});
+
+// Auto-unlock if session already verified
+try {
+  if (sessionStorage.getItem('psd_unlocked') === '1') {
+    document.getElementById('gate').classList.add('hidden');
+    document.getElementById('app').classList.add('unlocked');
+    // bootDashboard() will run below after declarations are done
+    window.addEventListener('DOMContentLoaded', () => {}); // no-op, handled below
+  }
+} catch(e) {}
+
+// ============================================================
+// EMBEDDED SAMPLE DATA — replaced when user loads an xlsx
+// ============================================================
+let DATA = {"rows":[{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"How to","l4":"Setup/Install","metrics":{"count":{"W10":7,"W11":5,"W12":6,"W13":8,"W14":6,"W15":5,"W16":6,"W17":3},"firstReply":{"W10":2.02,"W11":1.83,"W12":2.22,"W13":1.35,"W14":2.2,"W15":2.33,"W16":2.03,"W17":1.87},"frt":{"W10":4.91,"W11":4.69,"W12":5.03,"W13":5.03,"W14":5.35,"W15":5.23,"W16":4.88,"W17":5.12},"csat":{"W10":97,"W11":98,"W12":94,"W13":94,"W14":98,"W15":97,"W16":97,"W17":99},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"How to","l4":"Call/SMS","metrics":{"count":{"W10":4,"W11":3,"W12":4,"W13":5,"W14":4,"W15":4,"W16":4,"W17":2},"firstReply":{"W10":1.73,"W11":2.14,"W12":1.52,"W13":1.77,"W14":1.98,"W15":2.1,"W16":1.48,"W17":2.09},"frt":{"W10":5.34,"W11":4.9,"W12":5.35,"W13":5.44,"W14":5.49,"W15":5.18,"W16":4.73,"W17":4.77},"csat":{"W10":95,"W11":95,"W12":97,"W13":94,"W14":98,"W15":99,"W16":94,"W17":95},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"How to","l4":"Hotspots","metrics":{"count":{"W10":7,"W11":5,"W12":6,"W13":8,"W14":6,"W15":6,"W16":6,"W17":3},"firstReply":{"W10":1.93,"W11":1.65,"W12":1.53,"W13":1.78,"W14":1.39,"W15":1.74,"W16":1.38,"W17":1.87},"frt":{"W10":5.26,"W11":5.61,"W12":5.72,"W13":4.73,"W14":5.29,"W15":4.88,"W16":5.47,"W17":5.22},"csat":{"W10":95,"W11":95,"W12":96,"W13":94,"W14":97,"W15":100,"W16":99,"W17":98},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"How to","l4":"Unsubscribe","metrics":{"count":{"W10":6,"W11":4,"W12":5,"W13":7,"W14":5,"W15":5,"W16":5,"W17":2},"firstReply":{"W10":2.25,"W11":2.11,"W12":2.14,"W13":1.87,"W14":1.14,"W15":2.26,"W16":2.05,"W17":1.89},"frt":{"W10":5.2,"W11":5.59,"W12":5.31,"W13":5.24,"W14":4.5,"W15":5.43,"W16":4.81,"W17":5.45},"csat":{"W10":94,"W11":95,"W12":94,"W13":98,"W14":96,"W15":99,"W16":94,"W17":95},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"How to","l4":"Redeem Vouchers","metrics":{"count":{"W10":6,"W11":4,"W12":5,"W13":7,"W14":5,"W15":5,"W16":5,"W17":3},"firstReply":{"W10":1.83,"W11":1.7,"W12":1.93,"W13":1.54,"W14":1.43,"W15":1.78,"W16":2,"W17":1.75},"frt":{"W10":5.12,"W11":5.44,"W12":5.71,"W13":5.22,"W14":4.84,"W15":4.72,"W16":4.73,"W17":4.57},"csat":{"W10":94,"W11":94,"W12":97,"W13":94,"W14":98,"W15":94,"W16":99,"W17":95},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"How to","l4":"Use 3rd party apps","metrics":{"count":{"W10":8,"W11":5,"W12":6,"W13":9,"W14":6,"W15":6,"W16":7,"W17":3},"firstReply":{"W10":1.6,"W11":1.99,"W12":1.88,"W13":1.51,"W14":1.57,"W15":2.08,"W16":1.78,"W17":1.9},"frt":{"W10":4.78,"W11":5.17,"W12":5.7,"W13":5.03,"W14":4.69,"W15":4.78,"W16":4.94,"W17":4.55},"csat":{"W10":96,"W11":97,"W12":94,"W13":98,"W14":97,"W15":95,"W16":99,"W17":100},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"How to","l4":"eSIM Transfer","metrics":{"count":{"W10":5,"W11":4,"W12":4,"W13":6,"W14":4,"W15":4,"W16":5,"W17":2},"firstReply":{"W10":1.54,"W11":1.84,"W12":2.05,"W13":1.68,"W14":1.96,"W15":1.93,"W16":1.41,"W17":1.57},"frt":{"W10":5.07,"W11":5.5,"W12":5.68,"W13":5.43,"W14":5.47,"W15":5.25,"W16":5,"W17":5.46},"csat":{"W10":99,"W11":96,"W12":99,"W13":94,"W14":97,"W15":94,"W16":99,"W17":94},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"How to","l4":"WhatsApp","metrics":{"count":{"W10":7,"W11":5,"W12":6,"W13":8,"W14":6,"W15":5,"W16":6,"W17":3},"firstReply":{"W10":1.82,"W11":2.22,"W12":1.89,"W13":2,"W14":2.06,"W15":1.61,"W16":2.03,"W17":1.51},"frt":{"W10":5.12,"W11":5.65,"W12":4.93,"W13":4.99,"W14":4.57,"W15":5.5,"W16":4.77,"W17":5.38},"csat":{"W10":97,"W11":94,"W12":95,"W13":95,"W14":97,"W15":94,"W16":100,"W17":96},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"What is","l4":"Activation Policy","metrics":{"count":{"W10":7,"W11":7,"W12":6,"W13":4,"W14":6,"W15":4,"W16":6,"W17":6},"firstReply":{"W10":1.85,"W11":1.61,"W12":1.74,"W13":1.84,"W14":1.07,"W15":1.65,"W16":1.55,"W17":1.22},"frt":{"W10":4.29,"W11":4.81,"W12":4.3,"W13":4.62,"W14":4.24,"W15":3.84,"W16":4.24,"W17":3.9},"csat":{"W10":97,"W11":95,"W12":94,"W13":96,"W14":98,"W15":100,"W16":100,"W17":96},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"What is","l4":"eKYC","metrics":{"count":{"W10":7,"W11":6,"W12":6,"W13":4,"W14":6,"W15":4,"W16":6,"W17":5},"firstReply":{"W10":1.77,"W11":2.1,"W12":1.29,"W13":2.07,"W14":1.82,"W15":1.63,"W16":1.36,"W17":1.19},"frt":{"W10":4.19,"W11":4.93,"W12":4.07,"W13":4.89,"W14":4.46,"W15":3.87,"W16":3.97,"W17":4.04},"csat":{"W10":100,"W11":99,"W12":98,"W13":99,"W14":97,"W15":100,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"What is","l4":"eSIM","metrics":{"count":{"W10":5,"W11":4,"W12":4,"W13":3,"W14":4,"W15":3,"W16":4,"W17":4},"firstReply":{"W10":1.19,"W11":1.34,"W12":1.39,"W13":1.5,"W14":1.67,"W15":1.35,"W16":1.68,"W17":1.57},"frt":{"W10":4.15,"W11":4.92,"W12":4.44,"W13":4.6,"W14":4.26,"W15":3.78,"W16":4.38,"W17":4.09},"csat":{"W10":100,"W11":96,"W12":98,"W13":97,"W14":97,"W15":100,"W16":99,"W17":95},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"What is","l4":"Refund Policy","metrics":{"count":{"W10":8,"W11":7,"W12":7,"W13":5,"W14":6,"W15":5,"W16":7,"W17":6},"firstReply":{"W10":2.11,"W11":1.65,"W12":1.36,"W13":1.57,"W14":1.43,"W15":1.29,"W16":1.45,"W17":1.62},"frt":{"W10":4.9,"W11":4.6,"W12":4.05,"W13":4.57,"W14":4.15,"W15":4.54,"W16":3.85,"W17":4.06},"csat":{"W10":98,"W11":96,"W12":96,"W13":98,"W14":96,"W15":100,"W16":98,"W17":100},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"What is","l4":"eSIM Recycle","metrics":{"count":{"W10":5,"W11":5,"W12":5,"W13":3,"W14":4,"W15":3,"W16":4,"W17":4},"firstReply":{"W10":1.4,"W11":1.86,"W12":1.59,"W13":1.49,"W14":1.6,"W15":1.6,"W16":2.03,"W17":1.78},"frt":{"W10":4.68,"W11":4.64,"W12":4.74,"W13":4.21,"W14":3.82,"W15":4.16,"W16":4.61,"W17":4.53},"csat":{"W10":97,"W11":94,"W12":95,"W13":100,"W14":96,"W15":100,"W16":99,"W17":99},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"What is","l4":"Compatible device","metrics":{"count":{"W10":5,"W11":5,"W12":5,"W13":3,"W14":4,"W15":3,"W16":5,"W17":4},"firstReply":{"W10":1.22,"W11":1.35,"W12":1.34,"W13":1.23,"W14":1.37,"W15":1.7,"W16":1.8,"W17":1.11},"frt":{"W10":4.61,"W11":4.31,"W12":4.54,"W13":4.67,"W14":4.12,"W15":3.95,"W16":4.27,"W17":4.42},"csat":{"W10":96,"W11":96,"W12":95,"W13":98,"W14":98,"W15":98,"W16":99,"W17":97},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"What is","l4":"eSIM Coverage","metrics":{"count":{"W10":6,"W11":5,"W12":5,"W13":3,"W14":5,"W15":3,"W16":5,"W17":5},"firstReply":{"W10":1.57,"W11":1.51,"W12":1.06,"W13":1.12,"W14":1.48,"W15":1.12,"W16":1.32,"W17":1.33},"frt":{"W10":4.08,"W11":4.41,"W12":4.16,"W13":4.4,"W14":4.32,"W15":3.82,"W16":4.05,"W17":4.41},"csat":{"W10":96,"W11":95,"W12":98,"W13":97,"W14":96,"W15":97,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"What is","l4":"Data Usage","metrics":{"count":{"W10":6,"W11":6,"W12":6,"W13":4,"W14":5,"W15":4,"W16":6,"W17":5},"firstReply":{"W10":1.12,"W11":1.37,"W12":1.33,"W13":1.26,"W14":1.21,"W15":1.46,"W16":1.8,"W17":1.44},"frt":{"W10":4.07,"W11":4.65,"W12":4.68,"W13":4.6,"W14":4.47,"W15":3.8,"W16":4.58,"W17":3.84},"csat":{"W10":95,"W11":97,"W12":99,"W13":98,"W14":100,"W15":97,"W16":97,"W17":99},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"What is","l4":"Campaign","metrics":{"count":{"W10":5,"W11":5,"W12":5,"W13":3,"W14":4,"W15":3,"W16":5,"W17":4},"firstReply":{"W10":1.81,"W11":1.56,"W12":1.62,"W13":1.43,"W14":1.55,"W15":1.26,"W16":1.2,"W17":1.55},"frt":{"W10":4.36,"W11":4.14,"W12":4.8,"W13":4.71,"W14":4.46,"W15":4.15,"W16":4.5,"W17":4.52},"csat":{"W10":99,"W11":100,"W12":98,"W13":100,"W14":98,"W15":99,"W16":100,"W17":96},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"What is","l4":"Expiration date","metrics":{"count":{"W10":7,"W11":7,"W12":6,"W13":4,"W14":6,"W15":4,"W16":6,"W17":6},"firstReply":{"W10":1.08,"W11":1.89,"W12":1.63,"W13":1.4,"W14":1.6,"W15":1.4,"W16":1.72,"W17":1.1},"frt":{"W10":4.06,"W11":4.7,"W12":4.67,"W13":4.76,"W14":4.36,"W15":4.18,"W16":4.41,"W17":4.01},"csat":{"W10":100,"W11":97,"W12":98,"W13":95,"W14":97,"W15":98,"W16":97,"W17":97},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"What is","l4":"Validity","metrics":{"count":{"W10":5,"W11":5,"W12":4,"W13":3,"W14":4,"W15":3,"W16":4,"W17":4},"firstReply":{"W10":1.22,"W11":1.5,"W12":1.55,"W13":1.98,"W14":1.53,"W15":1.2,"W16":1.32,"W17":1.18},"frt":{"W10":4.14,"W11":4.21,"W12":4.3,"W13":4.68,"W14":4.19,"W15":4.17,"W16":3.82,"W17":4.47},"csat":{"W10":95,"W11":94,"W12":100,"W13":95,"W14":100,"W15":98,"W16":100,"W17":97},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"eSIM/Airmoney Voucher","l4":"Redemption Issue","metrics":{"count":{"W10":5,"W11":3,"W12":4,"W13":6,"W14":4,"W15":5,"W16":3,"W17":4},"firstReply":{"W10":2.7,"W11":3.3,"W12":2.58,"W13":2.38,"W14":2.43,"W15":2.36,"W16":2.77,"W17":3.3},"frt":{"W10":8.68,"W11":8.3,"W12":8.83,"W13":8.36,"W14":7.14,"W15":7.95,"W16":8.12,"W17":8.09},"csat":{"W10":94,"W11":92,"W12":89,"W13":89,"W14":90,"W15":92,"W16":94,"W17":96},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"eSIM/Airmoney Voucher","l4":"Voucher Already Redeemed","metrics":{"count":{"W10":4,"W11":3,"W12":3,"W13":5,"W14":3,"W15":5,"W16":3,"W17":4},"firstReply":{"W10":2.32,"W11":3.02,"W12":2.26,"W13":3.69,"W14":2.08,"W15":2.23,"W16":3.28,"W17":3.66},"frt":{"W10":8.76,"W11":7.56,"W12":8.21,"W13":8.41,"W14":7.8,"W15":7.08,"W16":7.41,"W17":8.32},"csat":{"W10":93,"W11":90,"W12":90,"W13":92,"W14":93,"W15":93,"W16":91,"W17":93},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"eSIM/Airmoney Voucher","l4":"Promotional Voucher","metrics":{"count":{"W10":3,"W11":2,"W12":2,"W13":4,"W14":2,"W15":3,"W16":2,"W17":3},"firstReply":{"W10":2.39,"W11":2.87,"W12":2.36,"W13":2.65,"W14":3.56,"W15":2.83,"W16":3.33,"W17":3.42},"frt":{"W10":8.35,"W11":8.24,"W12":7.44,"W13":8.38,"W14":8.1,"W15":8.29,"W16":7.51,"W17":7.65},"csat":{"W10":93,"W11":92,"W12":90,"W13":93,"W14":92,"W15":93,"W16":92,"W17":93},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"eSIM/Airmoney Voucher","l4":"Wrong Account Redeemed","metrics":{"count":{"W10":3,"W11":2,"W12":2,"W13":4,"W14":2,"W15":3,"W16":2,"W17":3},"firstReply":{"W10":2.41,"W11":2.76,"W12":3.74,"W13":2.33,"W14":2.12,"W15":2.93,"W16":2.52,"W17":2.48},"frt":{"W10":8.3,"W11":8.18,"W12":8.42,"W13":8.28,"W14":7.88,"W15":8.57,"W16":7.2,"W17":8.14},"csat":{"W10":93,"W11":94,"W12":89,"W13":89,"W14":93,"W15":95,"W16":95,"W17":93},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"eSIM/Airmoney Voucher","l4":"Expired Voucher","metrics":{"count":{"W10":3,"W11":2,"W12":3,"W13":4,"W14":3,"W15":3,"W16":2,"W17":3},"firstReply":{"W10":3.43,"W11":2.58,"W12":3.64,"W13":2.85,"W14":2.4,"W15":2.83,"W16":2.47,"W17":2.66},"frt":{"W10":8.11,"W11":7.74,"W12":8.8,"W13":7.75,"W14":8.58,"W15":7.86,"W16":7.87,"W17":7.31},"csat":{"W10":93,"W11":93,"W12":91,"W13":90,"W14":93,"W15":92,"W16":93,"W17":94},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"eSIM/Airmoney Voucher","l4":"Others","metrics":{"count":{"W10":5,"W11":4,"W12":4,"W13":7,"W14":4,"W15":6,"W16":4,"W17":5},"firstReply":{"W10":3.28,"W11":2.29,"W12":3.43,"W13":3.09,"W14":2.57,"W15":2.76,"W16":3.31,"W17":3.38},"frt":{"W10":7.92,"W11":8.88,"W12":8.1,"W13":8.71,"W14":7.73,"W15":8.04,"W16":8.53,"W17":8.03},"csat":{"W10":92,"W11":91,"W12":92,"W13":91,"W14":94,"W15":91,"W16":92,"W17":95},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"Nonspecific","l4":null,"metrics":{"count":{"W10":12,"W11":9,"W12":9,"W13":10,"W14":9,"W15":9,"W16":6,"W17":8},"firstReply":{"W10":1.38,"W11":0.85,"W12":1.04,"W13":0.81,"W14":1.1,"W15":1.08,"W16":0.9,"W17":1.03},"frt":{"W10":3.08,"W11":3.15,"W12":3.08,"W13":3.12,"W14":3.39,"W15":2.97,"W16":3.39,"W17":3.44},"csat":{"W10":97,"W11":94,"W12":96,"W13":96,"W14":94,"W15":95,"W16":93,"W17":96},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"Regulatory and Local Restrictions","l4":null,"metrics":{"count":{"W10":5,"W11":4,"W12":4,"W13":5,"W14":5,"W15":4,"W16":6,"W17":6},"firstReply":{"W10":2.28,"W11":2.38,"W12":2.68,"W13":2.12,"W14":2.35,"W15":3.33,"W16":2.55,"W17":1.83},"frt":{"W10":6.73,"W11":6.3,"W12":6.4,"W13":6.11,"W14":6.44,"W15":7.47,"W16":7.02,"W17":7.05},"csat":{"W10":90,"W11":93,"W12":91,"W13":91,"W14":90,"W15":89,"W16":89,"W17":91},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"Spam","l4":null,"metrics":{"count":{"W10":29,"W11":27,"W12":33,"W13":21,"W14":27,"W15":25,"W16":22,"W17":21},"firstReply":{"W10":0.08,"W11":0.08,"W12":0.07,"W13":0.08,"W14":0.07,"W15":0.07,"W16":0.1,"W17":0.09},"frt":{"W10":0.2,"W11":0.21,"W12":0.22,"W13":0.2,"W14":0.18,"W15":0.19,"W16":0.22,"W17":0.21},"csat":{"W10":100,"W11":100,"W12":100,"W13":100,"W14":99,"W15":98,"W16":100,"W17":99},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"Feedback","l4":null,"metrics":{"count":{"W10":3,"W11":3,"W12":3,"W13":3,"W14":4,"W15":6,"W16":4,"W17":4},"firstReply":{"W10":1.91,"W11":1.41,"W12":1.51,"W13":1.52,"W14":2.01,"W15":1.06,"W16":2.1,"W17":1.76},"frt":{"W10":4.29,"W11":4.37,"W12":4.23,"W13":3.96,"W14":4.58,"W15":4.15,"W16":4.85,"W17":4.25},"csat":{"W10":99,"W11":100,"W12":95,"W13":99,"W14":99,"W15":95,"W16":97,"W17":94},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Inquiry","l3":"Provider/Support email","l4":null,"metrics":{"count":{"W10":2,"W11":2,"W12":2,"W13":2,"W14":2,"W15":1,"W16":1,"W17":2},"firstReply":{"W10":0.73,"W11":0.91,"W12":0.55,"W13":0.69,"W14":0.63,"W15":1.07,"W16":1.04,"W17":0.81},"frt":{"W10":2.15,"W11":2.07,"W12":1.97,"W13":1.97,"W14":2.45,"W15":2.44,"W16":2.68,"W17":2.52},"csat":{"W10":93,"W11":96,"W12":96,"W13":93,"W14":99,"W15":96,"W16":94,"W17":99},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Installation","l3":"Incorrect Device Setup","l4":null,"metrics":{"count":{"W10":15,"W11":13,"W12":13,"W13":21,"W14":14,"W15":16,"W16":16,"W17":12},"firstReply":{"W10":2.57,"W11":2.32,"W12":2.93,"W13":2.85,"W14":4.19,"W15":2.57,"W16":2.19,"W17":2.47},"frt":{"W10":8.59,"W11":8.79,"W12":10,"W13":10.2,"W14":9.94,"W15":8.55,"W16":8.6,"W17":8.31},"csat":{"W10":94,"W11":92,"W12":90,"W13":91,"W14":90,"W15":91,"W16":94,"W17":95},"esc":{},"refunds":{"W10":1,"W11":1,"W12":1,"W13":1,"W14":1,"W15":1,"W16":1,"W17":1}}},{"l1":"eSIM Support","l2":"eSIM Installation","l3":"Carrier Locked Device","l4":null,"metrics":{"count":{"W10":6,"W11":6,"W12":5,"W13":11,"W14":6,"W15":7,"W16":6,"W17":5},"firstReply":{"W10":1.41,"W11":1.77,"W12":1.47,"W13":1.51,"W14":1.3,"W15":1.09,"W16":1.18,"W17":1.23},"frt":{"W10":4.01,"W11":4.36,"W12":4.29,"W13":4.37,"W14":3.73,"W15":4.11,"W16":3.88,"W17":3.9},"csat":{"W10":93,"W11":92,"W12":95,"W13":92,"W14":97,"W15":93,"W16":93,"W17":96},"esc":{},"refunds":{"W10":2,"W11":2,"W12":2,"W13":2,"W14":1,"W15":1,"W16":1,"W17":1}}},{"l1":"eSIM Support","l2":"eSIM Installation","l3":"Incompatible Device","l4":null,"metrics":{"count":{"W10":11,"W11":9,"W12":9,"W13":6,"W14":6,"W15":8,"W16":9,"W17":7},"firstReply":{"W10":1.08,"W11":1.1,"W12":0.93,"W13":1.12,"W14":0.83,"W15":0.98,"W16":1.29,"W17":1.09},"frt":{"W10":3.69,"W11":3.47,"W12":3.47,"W13":3.45,"W14":3.16,"W15":3.63,"W16":3.56,"W17":3.46},"csat":{"W10":97,"W11":94,"W12":95,"W13":97,"W14":100,"W15":95,"W16":99,"W17":97},"esc":{},"refunds":{"W10":2,"W11":2,"W12":2,"W13":2,"W14":2,"W15":2,"W16":2,"W17":2}}},{"l1":"eSIM Support","l2":"eSIM Installation","l3":"eSIM Installed and Deleted","l4":null,"metrics":{"count":{"W10":4,"W11":5,"W12":6,"W13":7,"W14":6,"W15":5,"W16":6,"W17":2},"firstReply":{"W10":1.7,"W11":1.68,"W12":2.58,"W13":2.55,"W14":2.24,"W15":2.47,"W16":1.68,"W17":1.82},"frt":{"W10":5.82,"W11":6.19,"W12":6.41,"W13":6.09,"W14":6.02,"W15":5.66,"W16":5.86,"W17":5.72},"csat":{"W10":94,"W11":92,"W12":93,"W13":96,"W14":97,"W15":92,"W16":94,"W17":94},"esc":{},"refunds":{"W10":1,"W11":1,"W12":1,"W13":1,"W14":1,"W15":1,"W16":1,"W17":1}}},{"l1":"eSIM Support","l2":"eSIM Installation","l3":"Installation failed","l4":"Unknown Error Message","metrics":{"count":{"W10":3,"W11":5,"W12":4,"W13":5,"W14":4,"W15":5,"W16":4,"W17":7},"firstReply":{"W10":3.04,"W11":4.12,"W12":3.81,"W13":4.56,"W14":4.02,"W15":5.64,"W16":4.77,"W17":3.74},"frt":{"W10":11.66,"W11":10.71,"W12":10.98,"W13":11.37,"W14":13.1,"W15":14.71,"W16":12.91,"W17":12.8},"csat":{"W10":86,"W11":89,"W12":89,"W13":87,"W14":86,"W15":86,"W16":85,"W17":85},"esc":{"W14":1,"W15":1,"W16":1,"W17":1},"refunds":{"W10":1,"W11":1,"W12":1,"W13":1,"W14":1,"W15":1,"W16":1,"W17":1}}},{"l1":"eSIM Support","l2":"eSIM Installation","l3":"Installation failed","l4":"iOS Error","metrics":{"count":{"W10":4,"W11":7,"W12":6,"W13":6,"W14":6,"W15":7,"W16":5,"W17":9},"firstReply":{"W10":3.93,"W11":3.24,"W12":3.13,"W13":4.55,"W14":4.81,"W15":4.13,"W16":6.27,"W17":6.45},"frt":{"W10":11.22,"W11":12.27,"W12":12.33,"W13":12.47,"W14":14.41,"W15":13.11,"W16":15.06,"W17":15.39},"csat":{"W10":89,"W11":90,"W12":85,"W13":90,"W14":87,"W15":83,"W16":87,"W17":84},"esc":{"W14":1,"W15":1,"W16":1,"W17":1},"refunds":{"W10":1,"W11":1,"W12":1,"W13":1,"W14":1,"W15":1,"W16":1,"W17":1}}},{"l1":"eSIM Support","l2":"eSIM Installation","l3":"Installation failed","l4":"Android Error","metrics":{"count":{"W10":5,"W11":8,"W12":7,"W13":7,"W14":6,"W15":8,"W16":6,"W17":10},"firstReply":{"W10":3.92,"W11":4.57,"W12":4.61,"W13":3.41,"W14":5.36,"W15":5.92,"W16":5.7,"W17":5.1},"frt":{"W10":11.12,"W11":10.61,"W12":11.15,"W13":12.22,"W14":13.34,"W15":14.64,"W16":14.18,"W17":14.05},"csat":{"W10":86,"W11":88,"W12":89,"W13":86,"W14":87,"W15":84,"W16":88,"W17":89},"esc":{"W14":1,"W15":1,"W16":1,"W17":1},"refunds":{"W10":1,"W11":1,"W12":1,"W13":1,"W14":1,"W15":1,"W16":1,"W17":1}}},{"l1":"eSIM Support","l2":"eSIM Installation","l3":"Installation failed","l4":"QR Code Error","metrics":{"count":{"W10":5,"W11":8,"W12":7,"W13":7,"W14":6,"W15":8,"W16":6,"W17":10},"firstReply":{"W10":3.47,"W11":3.27,"W12":4.74,"W13":4.43,"W14":4.98,"W15":6.16,"W16":5.35,"W17":3.84},"frt":{"W10":11.37,"W11":10.48,"W12":11.39,"W13":10.53,"W14":14.53,"W15":14.35,"W16":14.06,"W17":13.69},"csat":{"W10":87,"W11":88,"W12":85,"W13":90,"W14":86,"W15":88,"W16":88,"W17":86},"esc":{"W14":1,"W15":1,"W16":1,"W17":1},"refunds":{"W10":1,"W11":1,"W12":1,"W13":1,"W14":1,"W15":1,"W16":1,"W17":1}}},{"l1":"eSIM Support","l2":"eSIM Installation","l3":"Installation failed","l4":"Manual Installation Error","metrics":{"count":{"W10":6,"W11":9,"W12":8,"W13":8,"W14":7,"W15":9,"W16":7,"W17":12},"firstReply":{"W10":3.63,"W11":3.2,"W12":3.72,"W13":4.54,"W14":3.93,"W15":5.81,"W16":6.22,"W17":3.82},"frt":{"W10":10.75,"W11":11.36,"W12":11.21,"W13":11.13,"W14":14.62,"W15":14.71,"W16":14.64,"W17":13.73},"csat":{"W10":86,"W11":88,"W12":87,"W13":89,"W14":83,"W15":85,"W16":88,"W17":86},"esc":{"W14":1,"W15":1,"W16":1,"W17":1},"refunds":{"W10":1,"W11":1,"W12":1,"W13":1,"W14":1,"W15":1,"W16":1,"W17":1}}},{"l1":"eSIM Support","l2":"eSIM Installation","l3":"Installation failed","l4":"Others","metrics":{"count":{"W10":5,"W11":8,"W12":7,"W13":8,"W14":7,"W15":9,"W16":7,"W17":11},"firstReply":{"W10":4.52,"W11":5.08,"W12":4.28,"W13":3.82,"W14":4.04,"W15":4.57,"W16":5.52,"W17":5.45},"frt":{"W10":11.06,"W11":12.22,"W12":12.05,"W13":11.84,"W14":13.81,"W15":15.47,"W16":13.17,"W17":13.07},"csat":{"W10":87,"W11":89,"W12":89,"W13":88,"W14":84,"W15":86,"W16":83,"W17":88},"esc":{"W14":1,"W15":1,"W16":1,"W17":1},"refunds":{"W10":1,"W11":1,"W12":1,"W13":1,"W14":1,"W15":1,"W16":1,"W17":1}}},{"l1":"eSIM Support","l2":"eSIM Installation","l3":"Confirmed Outage/Degraded Service","l4":null,"metrics":{"count":{"W10":3,"W11":2,"W12":2,"W13":3,"W14":1,"W15":1,"W16":1,"W17":3},"firstReply":{"W10":5.37,"W11":6.85,"W12":5.24,"W13":6.74,"W14":2.98,"W15":4.22,"W16":3.02,"W17":3.9},"frt":{"W10":18.98,"W11":17.78,"W12":17.06,"W13":18.89,"W14":8.66,"W15":9.6,"W16":9.87,"W17":8.79},"csat":{"W10":87,"W11":84,"W12":85,"W13":85,"W14":94,"W15":91,"W16":92,"W17":92},"esc":{"W10":2,"W11":2,"W12":2,"W13":2},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Installation","l3":"User Unwilling to Cooperate","l4":null,"metrics":{"count":{"W10":3,"W11":3,"W12":2,"W13":4,"W14":4,"W15":4,"W16":4,"W17":2},"firstReply":{"W10":0.99,"W11":1.36,"W12":1.23,"W13":0.91,"W14":1.02,"W15":0.98,"W16":1.21,"W17":0.92},"frt":{"W10":3.21,"W11":3.16,"W12":2.79,"W13":2.83,"W14":2.9,"W15":3.03,"W16":2.9,"W17":3.3},"csat":{"W10":92,"W11":89,"W12":90,"W13":90,"W14":86,"W15":92,"W16":92,"W17":91},"esc":{},"refunds":{"W10":1,"W11":1,"W12":1,"W13":1,"W14":1,"W15":1,"W16":1,"W17":1}}},{"l1":"eSIM Support","l2":"eSIM Connection","l3":"Setting","l4":"User Not in Destination","metrics":{"count":{"W10":2,"W11":3,"W12":2,"W13":2,"W14":3,"W15":3,"W16":2,"W17":3},"firstReply":{"W10":2.52,"W11":2.56,"W12":2.02,"W13":2.6,"W14":2.97,"W15":1.98,"W16":3.69,"W17":2.85},"frt":{"W10":7.38,"W11":6.92,"W12":6.77,"W13":6.97,"W14":7.77,"W15":7.52,"W16":8.24,"W17":8.29},"csat":{"W10":93,"W11":93,"W12":91,"W13":91,"W14":89,"W15":93,"W16":90,"W17":89},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Connection","l3":"Setting","l4":"Incorrect Device Settings","metrics":{"count":{"W10":3,"W11":4,"W12":4,"W13":3,"W14":5,"W15":4,"W16":3,"W17":5},"firstReply":{"W10":2.03,"W11":2.16,"W12":3.08,"W13":2.02,"W14":2.67,"W15":1.92,"W16":3.99,"W17":3.31},"frt":{"W10":7.85,"W11":7.57,"W12":7.92,"W13":7.7,"W14":8.65,"W15":7.45,"W16":8.91,"W17":8.27},"csat":{"W10":90,"W11":93,"W12":91,"W13":93,"W14":90,"W15":88,"W16":90,"W17":89},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Connection","l3":"Setting","l4":"Unable to Modify Settings","metrics":{"count":{"W10":3,"W11":4,"W12":4,"W13":3,"W14":4,"W15":4,"W16":3,"W17":4},"firstReply":{"W10":3.6,"W11":3.26,"W12":2.98,"W13":2.85,"W14":2.2,"W15":3.13,"W16":2.59,"W17":2.39},"frt":{"W10":8.09,"W11":7.49,"W12":7.53,"W13":6.87,"W14":8.27,"W15":8.46,"W16":8.08,"W17":7.45},"csat":{"W10":90,"W11":91,"W12":93,"W13":92,"W14":89,"W15":89,"W16":91,"W17":92},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Connection","l3":"Setting","l4":"IMEI Not Detected","metrics":{"count":{"W10":3,"W11":4,"W12":4,"W13":3,"W14":4,"W15":4,"W16":3,"W17":5},"firstReply":{"W10":3.04,"W11":2.09,"W12":2.59,"W13":2.93,"W14":3.6,"W15":2.74,"W16":2.3,"W17":2.81},"frt":{"W10":8.18,"W11":7.92,"W12":7.92,"W13":7.6,"W14":8.94,"W15":8.32,"W16":8.45,"W17":8.59},"csat":{"W10":89,"W11":88,"W12":90,"W13":92,"W14":89,"W15":90,"W16":88,"W17":90},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Connection","l3":"Setting","l4":"Incorrect Package Activated","metrics":{"count":{"W10":4,"W11":5,"W12":4,"W13":3,"W14":5,"W15":5,"W16":4,"W17":5},"firstReply":{"W10":3.45,"W11":2.87,"W12":2.56,"W13":2.93,"W14":3.82,"W15":2.97,"W16":2.11,"W17":3.13},"frt":{"W10":8.03,"W11":7.42,"W12":8.02,"W13":6.85,"W14":8.78,"W15":8.43,"W16":7.58,"W17":8.68},"csat":{"W10":91,"W11":89,"W12":90,"W13":91,"W14":91,"W15":92,"W16":88,"W17":87},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Connection","l3":"Setting","l4":"Package Finished/Expired","metrics":{"count":{"W10":2,"W11":2,"W12":2,"W13":2,"W14":3,"W15":2,"W16":2,"W17":3},"firstReply":{"W10":2.09,"W11":2.79,"W12":3.31,"W13":2.27,"W14":3.87,"W15":2.1,"W16":3,"W17":3.41},"frt":{"W10":7.9,"W11":8.21,"W12":7.77,"W13":7.92,"W14":8.96,"W15":7.47,"W16":7.65,"W17":7.95},"csat":{"W10":93,"W11":92,"W12":90,"W13":92,"W14":90,"W15":88,"W16":89,"W17":93},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Connection","l3":"Setting","l4":"User Unwilling to Cooperate","metrics":{"count":{"W10":3,"W11":3,"W12":3,"W13":2,"W14":4,"W15":3,"W16":3,"W17":4},"firstReply":{"W10":3.12,"W11":3.28,"W12":1.94,"W13":2.49,"W14":2.82,"W15":3.16,"W16":2.72,"W17":2.69},"frt":{"W10":8.16,"W11":7.83,"W12":7.6,"W13":6.82,"W14":8.45,"W15":8.43,"W16":7.86,"W17":8.7},"csat":{"W10":89,"W11":92,"W12":93,"W13":92,"W14":92,"W15":90,"W16":93,"W17":91},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Connection","l3":"Setting","l4":"User Purchased Alternative eSIM","metrics":{"count":{"W10":3,"W11":4,"W12":4,"W13":3,"W14":4,"W15":4,"W16":3,"W17":5},"firstReply":{"W10":2.22,"W11":2.29,"W12":2.23,"W13":2.26,"W14":3.55,"W15":2.79,"W16":2.76,"W17":2.56},"frt":{"W10":8.04,"W11":7.31,"W12":7.45,"W13":6.9,"W14":8.39,"W15":7.64,"W16":7.89,"W17":8.22},"csat":{"W10":94,"W11":91,"W12":90,"W13":90,"W14":88,"W15":89,"W16":92,"W17":90},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Connection","l3":"Setting","l4":"Others","metrics":{"count":{"W10":3,"W11":4,"W12":4,"W13":3,"W14":5,"W15":4,"W16":3,"W17":5},"firstReply":{"W10":2.76,"W11":3.42,"W12":2.53,"W13":2.12,"W14":2.91,"W15":3.86,"W16":3.78,"W17":2.55},"frt":{"W10":7.73,"W11":8.02,"W12":7.84,"W13":7.35,"W14":8.29,"W15":8.63,"W16":8.5,"W17":8.03},"csat":{"W10":91,"W11":91,"W12":93,"W13":91,"W14":87,"W15":89,"W16":88,"W17":92},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Connection","l3":"Network","l4":"Scheduled maintenance","metrics":{"count":{"W10":6,"W11":5,"W12":4,"W13":4,"W14":6,"W15":4,"W16":5,"W17":8},"firstReply":{"W10":6.58,"W11":5.15,"W12":6.75,"W13":7.4,"W14":6,"W15":9.1,"W16":9.36,"W17":8.6},"frt":{"W10":15.84,"W11":16.61,"W12":17.54,"W13":18.08,"W14":23.51,"W15":22.39,"W16":23.74,"W17":22.88},"csat":{"W10":83,"W11":85,"W12":83,"W13":85,"W14":81,"W15":83,"W16":80,"W17":78},"esc":{"W14":1,"W15":1,"W16":1,"W17":1},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Connection","l3":"Network","l4":"Routing Issue","metrics":{"count":{"W10":9,"W11":8,"W12":6,"W13":6,"W14":9,"W15":7,"W16":7,"W17":13},"firstReply":{"W10":5.1,"W11":7.39,"W12":4.8,"W13":5.94,"W14":6.44,"W15":7.81,"W16":8.98,"W17":6.74},"frt":{"W10":15.35,"W11":17.41,"W12":17.28,"W13":15.53,"W14":22.61,"W15":24.35,"W16":23.72,"W17":23.37},"csat":{"W10":85,"W11":87,"W12":81,"W13":83,"W14":79,"W15":79,"W16":81,"W17":81},"esc":{"W14":1,"W15":1,"W16":1,"W17":1},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Connection","l3":"Network","l4":"Slow Speed","metrics":{"count":{"W10":5,"W11":4,"W12":3,"W13":3,"W14":5,"W15":4,"W16":4,"W17":7},"firstReply":{"W10":6.55,"W11":6.07,"W12":6.66,"W13":5.55,"W14":6.88,"W15":7.69,"W16":9.24,"W17":8.72},"frt":{"W10":16,"W11":15.75,"W12":16.1,"W13":18,"W14":21.54,"W15":22.24,"W16":21.16,"W17":23.38},"csat":{"W10":87,"W11":82,"W12":87,"W13":86,"W14":81,"W15":79,"W16":80,"W17":78},"esc":{"W14":1,"W15":1,"W16":1,"W17":1},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Connection","l3":"Network","l4":"Confirmed Outage/Degraded Service","metrics":{"count":{"W10":7,"W11":6,"W12":5,"W13":4,"W14":7,"W15":5,"W16":5,"W17":10},"firstReply":{"W10":6.26,"W11":7.83,"W12":5.15,"W13":6.84,"W14":8.88,"W15":9.91,"W16":10.39,"W17":9.46},"frt":{"W10":17.39,"W11":17.92,"W12":17.75,"W13":18.03,"W14":24.34,"W15":22.66,"W16":24.36,"W17":21.04},"csat":{"W10":81,"W11":83,"W12":84,"W13":83,"W14":78,"W15":81,"W16":78,"W17":83},"esc":{"W14":1,"W15":1,"W16":1,"W17":1},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Connection","l3":"Network","l4":"Suspected Network Outage","metrics":{"count":{"W10":8,"W11":7,"W12":6,"W13":5,"W14":8,"W15":6,"W16":7,"W17":11},"firstReply":{"W10":8.1,"W11":7.28,"W12":5.1,"W13":5.2,"W14":8.51,"W15":9.56,"W16":9.03,"W17":6.41},"frt":{"W10":18.09,"W11":16.64,"W12":17.66,"W13":15.22,"W14":21.41,"W15":23.81,"W16":21.04,"W17":23.97},"csat":{"W10":83,"W11":84,"W12":84,"W13":82,"W14":78,"W15":80,"W16":82,"W17":80},"esc":{"W14":1,"W15":1,"W16":1,"W17":1},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Connection","l3":"Network","l4":"No Signal in the area","metrics":{"count":{"W10":5,"W11":5,"W12":3,"W13":3,"W14":5,"W15":4,"W16":4,"W17":7},"firstReply":{"W10":4,"W11":4.46,"W12":5.05,"W13":6.45,"W14":9.38,"W15":6.34,"W16":8.33,"W17":8.27},"frt":{"W10":15.85,"W11":17.01,"W12":15.24,"W13":16.51,"W14":21.65,"W15":21.58,"W16":20.85,"W17":22.98},"csat":{"W10":85,"W11":85,"W12":83,"W13":86,"W14":78,"W15":81,"W16":78,"W17":79},"esc":{"W14":1,"W15":1,"W16":1,"W17":1},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Connection","l3":"Network","l4":"Recycled eSIM","metrics":{"count":{"W10":9,"W11":8,"W12":6,"W13":6,"W14":9,"W15":7,"W16":7,"W17":12},"firstReply":{"W10":6.23,"W11":5.28,"W12":5.28,"W13":4.82,"W14":8.05,"W15":8.42,"W16":7.64,"W17":7.86},"frt":{"W10":17.17,"W11":15.05,"W12":16.74,"W13":16.57,"W14":22.87,"W15":23.89,"W16":22.31,"W17":23.88},"csat":{"W10":81,"W11":84,"W12":82,"W13":82,"W14":78,"W15":80,"W16":77,"W17":81},"esc":{"W14":1,"W15":1,"W16":1,"W17":1},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Connection","l3":"Network","l4":"IMEI Block","metrics":{"count":{"W10":9,"W11":8,"W12":6,"W13":6,"W14":9,"W15":7,"W16":7,"W17":12},"firstReply":{"W10":5.95,"W11":7.75,"W12":7.62,"W13":6.95,"W14":8.39,"W15":7.25,"W16":7.49,"W17":5.9},"frt":{"W10":17.93,"W11":17.39,"W12":16.98,"W13":16.11,"W14":21.94,"W15":22.68,"W16":21.05,"W17":23.53},"csat":{"W10":81,"W11":86,"W12":84,"W13":86,"W14":81,"W15":81,"W16":80,"W17":78},"esc":{"W14":1,"W15":1,"W16":1,"W17":1},"refunds":{}}},{"l1":"eSIM Support","l2":"eSIM Connection","l3":"Network","l4":"Others","metrics":{"count":{"W10":5,"W11":5,"W12":4,"W13":3,"W14":5,"W15":4,"W16":4,"W17":7},"firstReply":{"W10":4.89,"W11":7.06,"W12":5.17,"W13":5.61,"W14":9.32,"W15":6.47,"W16":8.47,"W17":8.54},"frt":{"W10":17.94,"W11":17.52,"W12":17.77,"W13":15.18,"W14":23.41,"W15":22.06,"W16":24.14,"W17":21.55},"csat":{"W10":85,"W11":84,"W12":81,"W13":81,"W14":77,"W15":78,"W16":77,"W17":82},"esc":{"W14":1,"W15":1,"W16":1,"W17":1},"refunds":{}}},{"l1":"eSIM Support","l2":"Calling/SMS","l3":"Calling","l4":"Unable to Make Calls","metrics":{"count":{"W10":2,"W11":2,"W12":2,"W13":2,"W14":2,"W15":1,"W16":2,"W17":2},"firstReply":{"W10":2.33,"W11":2.73,"W12":2.29,"W13":2.42,"W14":1.85,"W15":2.71,"W16":2.19,"W17":1.62},"frt":{"W10":6.66,"W11":7.11,"W12":6.87,"W13":6.04,"W14":5.97,"W15":6.25,"W16":6.07,"W17":5.56},"csat":{"W10":92,"W11":95,"W12":91,"W13":91,"W14":95,"W15":95,"W16":96,"W17":91},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"Calling/SMS","l3":"Calling","l4":"Unable to Receive Calls","metrics":{"count":{"W10":3,"W11":3,"W12":3,"W13":3,"W14":3,"W15":2,"W16":3,"W17":3},"firstReply":{"W10":2.35,"W11":1.91,"W12":2.47,"W13":2.05,"W14":2.87,"W15":2.95,"W16":2.21,"W17":2.04},"frt":{"W10":6.1,"W11":6.63,"W12":6.84,"W13":6.47,"W14":6.55,"W15":6.55,"W16":5.97,"W17":5.65},"csat":{"W10":91,"W11":94,"W12":93,"W13":94,"W14":90,"W15":91,"W16":91,"W17":95},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"Calling/SMS","l3":"Calling","l4":"Insufficient Credit","metrics":{"count":{"W10":3,"W11":3,"W12":3,"W13":3,"W14":2,"W15":2,"W16":3,"W17":3},"firstReply":{"W10":1.76,"W11":2.98,"W12":2.34,"W13":1.84,"W14":2.09,"W15":1.86,"W16":2.05,"W17":1.87},"frt":{"W10":6.52,"W11":7.13,"W12":7.04,"W13":6.58,"W14":5.71,"W15":5.9,"W16":5.86,"W17":6.19},"csat":{"W10":92,"W11":92,"W12":91,"W13":90,"W14":96,"W15":91,"W16":95,"W17":94},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"Calling/SMS","l3":"Calling","l4":"Network issue","metrics":{"count":{"W10":2,"W11":2,"W12":2,"W13":2,"W14":2,"W15":2,"W16":2,"W17":2},"firstReply":{"W10":2.71,"W11":2.32,"W12":1.72,"W13":2.67,"W14":2.64,"W15":1.43,"W16":2.25,"W17":2.15},"frt":{"W10":6.88,"W11":6.48,"W12":6.68,"W13":6.95,"W14":6.32,"W15":5.68,"W16":6.01,"W17":6.2},"csat":{"W10":90,"W11":95,"W12":89,"W13":95,"W14":92,"W15":94,"W16":92,"W17":94},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"Calling/SMS","l3":"Calling","l4":"Others","metrics":{"count":{"W10":3,"W11":4,"W12":4,"W13":3,"W14":3,"W15":3,"W16":3,"W17":4},"firstReply":{"W10":1.57,"W11":2.84,"W12":1.89,"W13":2.15,"W14":2.1,"W15":2.12,"W16":2.55,"W17":2.71},"frt":{"W10":6.21,"W11":6.91,"W12":7.03,"W13":6.04,"W14":6.38,"W15":5.85,"W16":6.59,"W17":6.42},"csat":{"W10":95,"W11":93,"W12":90,"W13":90,"W14":92,"W15":92,"W16":91,"W17":94},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"Calling/SMS","l3":"SMS","l4":"OTP Delivery Failure","metrics":{"count":{"W10":5,"W11":4,"W12":4,"W13":5,"W14":4,"W15":4,"W16":4,"W17":8},"firstReply":{"W10":2.26,"W11":3.83,"W12":2.5,"W13":3.74,"W14":3.18,"W15":4.9,"W16":3.1,"W17":4.35},"frt":{"W10":8.73,"W11":8.95,"W12":9.45,"W13":10.31,"W14":10.15,"W15":12.23,"W16":11.68,"W17":10.44},"csat":{"W10":88,"W11":90,"W12":85,"W13":90,"W14":89,"W15":87,"W16":85,"W17":84},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"Calling/SMS","l3":"SMS","l4":"Unable to Send SMS","metrics":{"count":{"W10":8,"W11":6,"W12":7,"W13":8,"W14":6,"W15":6,"W16":6,"W17":12},"firstReply":{"W10":3.48,"W11":2.48,"W12":2.98,"W13":3.3,"W14":3.6,"W15":3.95,"W16":4.7,"W17":4.32},"frt":{"W10":8.82,"W11":9.5,"W12":9.38,"W13":10.01,"W14":11.81,"W15":12.3,"W16":12.19,"W17":11.56},"csat":{"W10":91,"W11":91,"W12":90,"W13":91,"W14":83,"W15":86,"W16":86,"W17":84},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"Calling/SMS","l3":"SMS","l4":"Unable to Receive SMS","metrics":{"count":{"W10":4,"W11":3,"W12":3,"W13":4,"W14":3,"W15":3,"W16":3,"W17":6},"firstReply":{"W10":3.94,"W11":2.3,"W12":2.78,"W13":2.99,"W14":2.89,"W15":4.02,"W16":3.33,"W17":4.71},"frt":{"W10":9.9,"W11":9.15,"W12":9.14,"W13":8.8,"W14":11.32,"W15":10.87,"W16":10.81,"W17":10.95},"csat":{"W10":89,"W11":86,"W12":87,"W13":86,"W14":85,"W15":84,"W16":85,"W17":84},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"Calling/SMS","l3":"SMS","l4":"Others","metrics":{"count":{"W10":4,"W11":3,"W12":3,"W13":3,"W14":3,"W15":3,"W16":3,"W17":6},"firstReply":{"W10":2.88,"W11":3.2,"W12":2.48,"W13":3.39,"W14":3.1,"W15":3.4,"W16":3.62,"W17":4.57},"frt":{"W10":9.27,"W11":9.49,"W12":9.35,"W13":9.03,"W14":11.41,"W15":10.76,"W16":11.47,"W17":10.83},"csat":{"W10":86,"W11":85,"W12":88,"W13":86,"W14":84,"W15":89,"W16":88,"W17":88},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"Calling/SMS","l3":"Phone Number","l4":"Missing Phone Number","metrics":{"count":{"W10":3,"W11":2,"W12":2,"W13":2,"W14":2,"W15":3,"W16":3,"W17":3},"firstReply":{"W10":1.49,"W11":1.3,"W12":1.64,"W13":2.05,"W14":1.67,"W15":1.98,"W16":1.85,"W17":1.96},"frt":{"W10":4.57,"W11":4.78,"W12":4.56,"W13":4.66,"W14":4.96,"W15":4.79,"W16":5.3,"W17":5.13},"csat":{"W10":92,"W11":93,"W12":95,"W13":94,"W14":94,"W15":94,"W16":92,"W17":91},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"Calling/SMS","l3":"Phone Number","l4":"Incorrect Phone Number","metrics":{"count":{"W10":5,"W11":3,"W12":3,"W13":4,"W14":4,"W15":4,"W16":5,"W17":4},"firstReply":{"W10":1.63,"W11":1.75,"W12":1.46,"W13":1.84,"W14":1.75,"W15":1.26,"W16":1.81,"W17":1.76},"frt":{"W10":4.94,"W11":4.51,"W12":4.54,"W13":4.86,"W14":4.58,"W15":4.86,"W16":5.48,"W17":5.25},"csat":{"W10":94,"W11":97,"W12":96,"W13":94,"W14":95,"W15":94,"W16":94,"W17":96},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"Calling/SMS","l3":"Phone Number","l4":"Others","metrics":{"count":{"W10":5,"W11":3,"W12":4,"W13":4,"W14":4,"W15":4,"W16":6,"W17":4},"firstReply":{"W10":1.65,"W11":1.8,"W12":1.46,"W13":1.36,"W14":2.39,"W15":1.58,"W16":1.63,"W17":1.55},"frt":{"W10":4.52,"W11":4.45,"W12":4.58,"W13":4.07,"W14":5.46,"W15":4.64,"W16":4.71,"W17":4.94},"csat":{"W10":94,"W11":93,"W12":94,"W13":92,"W14":91,"W15":92,"W16":93,"W17":94},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"User Behavior","l3":"Wrong purchase","l4":null,"metrics":{"count":{"W10":10,"W11":13,"W12":9,"W13":13,"W14":10,"W15":10,"W16":8,"W17":10},"firstReply":{"W10":1.47,"W11":1.65,"W12":2.04,"W13":2.02,"W14":1.6,"W15":2.17,"W16":1.49,"W17":1.76},"frt":{"W10":5.22,"W11":5.57,"W12":5.4,"W13":5.43,"W14":4.89,"W15":5.41,"W16":5.52,"W17":5.59},"csat":{"W10":88,"W11":93,"W12":88,"W13":87,"W14":92,"W15":89,"W16":88,"W17":89},"esc":{},"refunds":{"W10":8,"W11":8,"W12":8,"W13":8,"W14":7,"W15":7,"W16":7,"W17":7}}},{"l1":"eSIM Support","l2":"User Behavior","l3":"Plan changed","l4":null,"metrics":{"count":{"W10":7,"W11":6,"W12":8,"W13":7,"W14":7,"W15":7,"W16":7,"W17":4},"firstReply":{"W10":1.09,"W11":0.99,"W12":0.85,"W13":0.79,"W14":1.04,"W15":0.8,"W16":1.17,"W17":1.15},"frt":{"W10":2.91,"W11":3.19,"W12":3.07,"W13":2.77,"W14":3.12,"W15":2.78,"W16":3.08,"W17":3.3},"csat":{"W10":97,"W11":96,"W12":93,"W13":94,"W14":96,"W15":95,"W16":97,"W17":96},"esc":{},"refunds":{"W10":4,"W11":4,"W12":4,"W13":4,"W14":4,"W15":4,"W16":4,"W17":4}}},{"l1":"eSIM Support","l2":"User Behavior","l3":"Device broken/new/stolen","l4":null,"metrics":{"count":{"W10":4,"W11":4,"W12":4,"W13":6,"W14":5,"W15":4,"W16":5,"W17":8},"firstReply":{"W10":1.72,"W11":1.95,"W12":1.15,"W13":1.44,"W14":1.65,"W15":1.81,"W16":1.79,"W17":2.12},"frt":{"W10":4.92,"W11":4.67,"W12":4.49,"W13":4.73,"W14":4.84,"W15":5.03,"W16":4.43,"W17":5.11},"csat":{"W10":93,"W11":92,"W12":90,"W13":92,"W14":90,"W15":94,"W16":90,"W17":91},"esc":{},"refunds":{"W10":3,"W11":3,"W12":3,"W13":3,"W14":4,"W15":4,"W16":4,"W17":4}}},{"l1":"eSIM Support","l2":"User Behavior","l3":"eSIM Deleted","l4":null,"metrics":{"count":{"W10":4,"W11":6,"W12":6,"W13":6,"W14":4,"W15":5,"W16":5,"W17":4},"firstReply":{"W10":1.76,"W11":2.39,"W12":2.18,"W13":2,"W14":1.57,"W15":1.36,"W16":1.91,"W17":1.63},"frt":{"W10":5.5,"W11":5.32,"W12":5.28,"W13":5.09,"W14":5.65,"W15":5.18,"W16":5.34,"W17":5.31},"csat":{"W10":91,"W11":91,"W12":89,"W13":90,"W14":90,"W15":90,"W16":91,"W17":93},"esc":{},"refunds":{"W10":4,"W11":4,"W12":4,"W13":4,"W14":3,"W15":3,"W16":3,"W17":3}}},{"l1":"eSIM Support","l2":"User Behavior","l3":"Unused Top-Up","l4":null,"metrics":{"count":{"W10":3,"W11":4,"W12":5,"W13":3,"W14":2,"W15":4,"W16":3,"W17":3},"firstReply":{"W10":1.06,"W11":1.47,"W12":1.44,"W13":1.06,"W14":1.41,"W15":1.44,"W16":1.18,"W17":1.04},"frt":{"W10":3.84,"W11":3.76,"W12":3.73,"W13":3.49,"W14":3.73,"W15":4.09,"W16":3.63,"W17":4.14},"csat":{"W10":94,"W11":90,"W12":94,"W13":92,"W14":93,"W15":91,"W16":96,"W17":92},"esc":{},"refunds":{"W10":3,"W11":3,"W12":3,"W13":3,"W14":2,"W15":2,"W16":2,"W17":2}}},{"l1":"eSIM Support","l2":"User Behavior","l3":"Natural Disaster Impact","l4":null,"metrics":{"count":{"W10":1,"W11":1,"W12":1,"W14":1,"W17":1},"firstReply":{"W10":1.65,"W11":1.82,"W12":2.11,"W13":2.25,"W14":2.59,"W15":1.91,"W16":2.54,"W17":1.83},"frt":{"W10":5.66,"W11":5.72,"W12":6.09,"W13":5.81,"W14":6.37,"W15":6.94,"W16":7.5,"W17":6.3},"csat":{"W10":95,"W11":97,"W12":95,"W14":93,"W17":98},"esc":{},"refunds":{}}},{"l1":"eSIM Support","l2":"User Behavior","l3":"Others","l4":null,"metrics":{"count":{"W10":3,"W11":2,"W12":3,"W13":4,"W14":3,"W15":2,"W16":3,"W17":2},"firstReply":{"W10":1.1,"W11":1.53,"W12":1.48,"W13":1,"W14":1,"W15":1.95,"W16":1.09,"W17":1.11},"frt":{"W10":3.9,"W11":3.92,"W12":3.79,"W13":3.6,"W14":3.97,"W15":4.36,"W16":4.13,"W17":4.1},"csat":{"W10":92,"W11":89,"W12":91,"W13":90,"W14":92,"W15":93,"W16":89,"W17":92},"esc":{},"refunds":{"W10":1,"W11":1,"W12":1,"W13":1,"W14":1,"W15":1,"W16":1,"W17":1}}},{"l1":"PX Support","l2":"Partnership","l3":"Lead","l4":"Guiding to set up","metrics":{"count":{"W11":1,"W13":1},"firstReply":{"W10":17.42,"W11":15.24,"W12":19.57,"W13":16.42,"W14":0.23,"W15":0.24,"W16":0.2,"W17":0.23},"frt":{"W10":44.16,"W11":45.85,"W12":46.37,"W13":41,"W14":0.71,"W15":0.76,"W16":0.65,"W17":0.64},"csat":{"W11":65,"W13":65},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partnership","l3":"Lead","l4":"Pending Approval","metrics":{"count":{"W11":1,"W13":1},"firstReply":{"W10":19.47,"W11":16.31,"W12":17.9,"W13":18.42,"W14":0.27,"W15":0.23,"W16":0.25,"W17":0.34},"frt":{"W10":46.4,"W11":46.12,"W12":44.79,"W13":42.87,"W14":0.76,"W15":0.65,"W16":0.71,"W17":0.77},"csat":{"W11":66,"W13":64},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partnership","l3":"Lead","l4":"Forward to responsible team","metrics":{"count":{"W11":1,"W13":1},"firstReply":{"W10":14.64,"W11":20.43,"W12":11.94,"W13":10.53,"W14":0.26,"W15":0.26,"W16":0.23,"W17":0.19},"frt":{"W10":45.31,"W11":46.34,"W12":47.12,"W13":40.83,"W14":0.64,"W15":0.7,"W16":0.7,"W17":0.73},"csat":{"W11":69,"W13":66},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partnership","l3":"Business Partner","l4":"Account Manager","metrics":{"count":{"W10":2,"W11":2,"W12":2,"W13":2,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":3.74,"W11":4.81,"W12":5.02,"W13":4.72,"W14":4.27,"W15":3.86,"W16":3.63,"W17":3.56},"frt":{"W10":14.01,"W11":12.93,"W12":12.6,"W13":12.1,"W14":12.03,"W15":13.63,"W16":11.94,"W17":13.9},"csat":{"W10":80,"W11":83,"W12":84,"W13":84,"W14":100,"W15":100,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partnership","l3":"Business Partner","l4":"Partner Stream","metrics":{"count":{"W10":2,"W11":2,"W12":2,"W13":2,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":4.63,"W11":3.45,"W12":3.93,"W13":5.54,"W14":4,"W15":5.06,"W16":5.19,"W17":4.23},"frt":{"W10":12.73,"W11":12.75,"W12":13.29,"W13":13.12,"W14":12.24,"W15":12,"W16":13.04,"W17":12.69},"csat":{"W10":83,"W11":82,"W12":84,"W13":80,"W14":100,"W15":100,"W16":100,"W17":99},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partnership","l3":"Business Partner","l4":"Multi-layer","metrics":{"count":{"W10":2,"W11":2,"W12":1,"W13":2,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":6.13,"W11":3.67,"W12":5.05,"W13":4.28,"W14":4.25,"W15":5.32,"W16":4.87,"W17":4.06},"frt":{"W10":13.9,"W11":11.97,"W12":14,"W13":11.81,"W14":12.39,"W15":13.14,"W16":12.11,"W17":12.24},"csat":{"W10":86,"W11":83,"W12":82,"W13":81,"W14":100,"W15":100,"W16":100,"W17":97},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partnership","l3":"Business Partner","l4":"Training Request","metrics":{"count":{"W10":3,"W11":3,"W12":3,"W13":3,"W14":2,"W15":1,"W16":2,"W17":2},"firstReply":{"W10":3.79,"W11":4.59,"W12":4.69,"W13":5.17,"W14":4.2,"W15":3.8,"W16":3.17,"W17":5.79},"frt":{"W10":14.01,"W11":13.18,"W12":11.95,"W13":12.03,"W14":12.95,"W15":14.12,"W16":11.95,"W17":13.07},"csat":{"W10":84,"W11":81,"W12":86,"W13":86,"W14":100,"W15":98,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partnership","l3":"Business Partner","l4":"Compensation","metrics":{"count":{"W10":3,"W11":3,"W12":3,"W13":3,"W14":2,"W15":1,"W16":2,"W17":2},"firstReply":{"W10":3.63,"W11":3.89,"W12":4.05,"W13":3.85,"W14":3.4,"W15":4.99,"W16":5.59,"W17":3.73},"frt":{"W10":12.5,"W11":13.83,"W12":12.22,"W13":13.19,"W14":12.41,"W15":12.02,"W16":13.41,"W17":12.46},"csat":{"W10":80,"W11":84,"W12":83,"W13":86,"W14":99,"W15":100,"W16":97,"W17":98},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partnership","l3":"Business Partner","l4":"Bulk eSIM purchase","metrics":{"count":{"W10":1,"W11":1,"W12":1,"W13":1,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":3.89,"W11":3.61,"W12":5.28,"W13":3.94,"W14":4.85,"W15":3.12,"W16":3.99,"W17":4.97},"frt":{"W10":12.97,"W11":13,"W12":11.82,"W13":12.13,"W14":13.24,"W15":12.28,"W16":11.78,"W17":11.94},"csat":{"W10":84,"W11":85,"W12":85,"W13":85,"W14":100,"W15":100,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partnership","l3":"Business Partner","l4":"Co-branding","metrics":{"count":{"W10":3,"W11":3,"W12":2,"W13":3,"W14":1,"W15":1,"W16":2,"W17":1},"firstReply":{"W10":3.38,"W11":3.78,"W12":5.27,"W13":4.13,"W14":3.99,"W15":5.11,"W16":5.32,"W17":5.55},"frt":{"W10":11.87,"W11":12.35,"W12":14.1,"W13":12.43,"W14":13.03,"W15":11.96,"W16":12.97,"W17":13.66},"csat":{"W10":84,"W11":81,"W12":80,"W13":82,"W14":97,"W15":98,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partnership","l3":"Airalo for Business","l4":"General Information","metrics":{"count":{"W10":2,"W11":2,"W12":2,"W13":2,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":6.56,"W11":3.91,"W12":3.89,"W13":6.45,"W14":8.9,"W15":7.92,"W16":9.23,"W17":8},"frt":{"W10":14.75,"W11":12.88,"W12":14.89,"W13":15.39,"W14":21.3,"W15":21.49,"W16":21.33,"W17":18.2},"csat":{"W10":100,"W11":100,"W12":100,"W13":98,"W14":99,"W15":98,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partnership","l3":"Airalo for Business","l4":"Organization","metrics":{"count":{"W10":2,"W11":3,"W12":3,"W13":3,"W14":1,"W15":1,"W16":1,"W17":2},"firstReply":{"W10":3.61,"W11":4.71,"W12":3.66,"W13":5.63,"W14":5.46,"W15":8.28,"W16":9.5,"W17":6.45},"frt":{"W10":13.47,"W11":13.25,"W12":12.6,"W13":12.97,"W14":21.48,"W15":20.45,"W16":21.49,"W17":19.59},"csat":{"W10":100,"W11":98,"W12":100,"W13":100,"W14":99,"W15":100,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partnership","l3":"Airalo for Business","l4":"Airalo App Sync Issue","metrics":{"count":{"W10":2,"W11":2,"W12":2,"W13":2,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":4.36,"W11":6.67,"W12":5.44,"W13":5.07,"W14":8.18,"W15":9.83,"W16":8.14,"W17":6.41},"frt":{"W10":15.29,"W11":15.31,"W12":14.8,"W13":13.09,"W14":18.6,"W15":21.9,"W16":21.97,"W17":21.79},"csat":{"W10":100,"W11":100,"W12":98,"W13":99,"W14":100,"W15":99,"W16":97,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partnership","l3":"Airalo for Business","l4":"SSO Login","metrics":{"count":{"W10":3,"W11":3,"W12":3,"W13":3,"W14":2,"W15":2,"W16":1,"W17":2},"firstReply":{"W10":3.5,"W11":6.23,"W12":4.15,"W13":3.47,"W14":7.18,"W15":7.67,"W16":5.3,"W17":7.61},"frt":{"W10":13.07,"W11":14.59,"W12":13.85,"W13":12.79,"W14":18.1,"W15":21.99,"W16":19.61,"W17":20.02},"csat":{"W10":100,"W11":100,"W12":99,"W13":99,"W14":99,"W15":100,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partnership","l3":"Airalo for Business","l4":"Corporate Reports - Access","metrics":{"count":{"W10":2,"W11":2,"W12":2,"W13":3,"W14":1,"W15":1,"W16":1,"W17":2},"firstReply":{"W10":4.33,"W11":4.91,"W12":5.57,"W13":3.67,"W14":9.36,"W15":5.45,"W16":7.43,"W17":6.44},"frt":{"W10":15.26,"W11":13.65,"W12":15.11,"W13":14.32,"W14":21.88,"W15":18.72,"W16":18.85,"W17":21.02},"csat":{"W10":97,"W11":100,"W12":98,"W13":100,"W14":98,"W15":98,"W16":100,"W17":99},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partnership","l3":"Airalo for Business","l4":"Corporate Reports - Data","metrics":{"count":{"W10":2,"W11":3,"W12":3,"W13":3,"W14":1,"W15":1,"W16":1,"W17":2},"firstReply":{"W10":5.28,"W11":3.64,"W12":3.48,"W13":4.93,"W14":5.38,"W15":8.66,"W16":5.92,"W17":6.06},"frt":{"W10":13.8,"W11":14.28,"W12":13.08,"W13":14.96,"W14":20.06,"W15":20.28,"W16":19.57,"W17":19.96},"csat":{"W10":99,"W11":98,"W12":99,"W13":99,"W14":100,"W15":98,"W16":100,"W17":98},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partnership","l3":"Finance","l4":"Bulk Refund","metrics":{"count":{"W10":2,"W11":3,"W12":3,"W13":3,"W14":2,"W15":2,"W16":2,"W17":2},"firstReply":{"W10":6.36,"W11":5.95,"W12":6.24,"W13":5.51,"W14":3.34,"W15":5.73,"W16":5.26,"W17":4.71},"frt":{"W10":14.92,"W11":13.83,"W12":14.5,"W13":14.74,"W14":11.74,"W15":13.93,"W16":11.75,"W17":12.54},"csat":{"W10":100,"W11":97,"W12":100,"W13":100,"W14":100,"W15":100,"W16":100,"W17":100},"esc":{"W14":1,"W15":1,"W16":1,"W17":1},"refunds":{}}},{"l1":"PX Support","l2":"Partnership","l3":"Finance","l4":"Dispute","metrics":{"count":{"W10":1,"W11":2,"W12":2,"W13":2,"W14":1,"W15":2,"W16":2,"W17":1},"firstReply":{"W10":4.28,"W11":5.64,"W12":5.21,"W13":3.83,"W14":5.66,"W15":3.72,"W16":3.88,"W17":4.33},"frt":{"W10":13.59,"W11":13.28,"W12":14.7,"W13":13.68,"W14":12.92,"W15":13.78,"W16":12.16,"W17":12.47},"csat":{"W10":99,"W11":100,"W12":100,"W13":99,"W14":100,"W15":100,"W16":100,"W17":99},"esc":{"W14":1,"W15":1,"W16":1,"W17":1},"refunds":{}}},{"l1":"PX Support","l2":"Partnership","l3":"Finance","l4":"Monthly Invoice","metrics":{"count":{"W10":2,"W11":3,"W12":3,"W13":3,"W14":2,"W15":2,"W16":2,"W17":2},"firstReply":{"W10":6.18,"W11":5.36,"W12":3.83,"W13":4.52,"W14":3.42,"W15":6.07,"W16":3.82,"W17":3.59},"frt":{"W10":14.44,"W11":13.43,"W12":15.07,"W13":14.78,"W14":12.68,"W15":13.64,"W16":12.56,"W17":12.49},"csat":{"W10":97,"W11":98,"W12":100,"W13":99,"W14":100,"W15":98,"W16":100,"W17":100},"esc":{"W14":1,"W15":1,"W16":1,"W17":1},"refunds":{}}},{"l1":"PX Support","l2":"Partnership","l3":"Finance","l4":"Payment Method","metrics":{"count":{"W10":2,"W11":3,"W12":3,"W13":3,"W14":2,"W15":2,"W16":3,"W17":2},"firstReply":{"W10":4.17,"W11":3.71,"W12":3.81,"W13":5.45,"W14":5.23,"W15":5.48,"W16":3.49,"W17":4.24},"frt":{"W10":14.79,"W11":13.37,"W12":14.88,"W13":13.05,"W14":12.06,"W15":13.22,"W16":12.71,"W17":11.51},"csat":{"W10":100,"W11":100,"W12":100,"W13":100,"W14":100,"W15":99,"W16":100,"W17":99},"esc":{"W14":1,"W15":1,"W16":1,"W17":1},"refunds":{}}},{"l1":"PX Support","l2":"Partnership","l3":"Finance","l4":"Others","metrics":{"count":{"W10":1,"W11":2,"W12":2,"W13":2,"W14":1,"W15":2,"W16":2,"W17":1},"firstReply":{"W10":5.82,"W11":3.76,"W12":5.94,"W13":4.35,"W14":5.06,"W15":5.78,"W16":3.29,"W17":3.75},"frt":{"W10":15,"W11":13.3,"W12":14.1,"W13":14.31,"W14":12.47,"W15":13.38,"W16":13.07,"W17":12.07},"csat":{"W10":100,"W11":99,"W12":100,"W13":100,"W14":97,"W15":97,"W16":100,"W17":100},"esc":{"W14":1,"W15":1,"W16":1,"W17":1},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Home","l4":"Log In Issue","metrics":{"count":{"W10":4,"W11":3,"W12":3,"W13":2,"W14":1,"W15":1,"W16":1,"W17":2},"firstReply":{"W10":4.29,"W11":4.08,"W12":5.28,"W13":3.98,"W14":6.72,"W15":8.31,"W16":8.17,"W17":8.46},"frt":{"W10":13.22,"W11":13.18,"W12":11.8,"W13":13.16,"W14":21.68,"W15":19.34,"W16":22.07,"W17":21.47},"csat":{"W10":69,"W11":68,"W12":64,"W13":69,"W14":100,"W15":100,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Home","l4":"Page Not Loading","metrics":{"count":{"W10":4,"W11":3,"W12":3,"W13":2,"W14":1,"W15":1,"W16":1,"W17":2},"firstReply":{"W10":4.9,"W11":5.13,"W12":4.92,"W13":4.86,"W14":9.46,"W15":5.37,"W16":7.97,"W17":6.18},"frt":{"W10":12.51,"W11":12.98,"W12":12.09,"W13":13.84,"W14":22.24,"W15":19.47,"W16":19.8,"W17":19.48},"csat":{"W10":64,"W11":65,"W12":67,"W13":68,"W14":100,"W15":98,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Home","l4":"Currency","metrics":{"count":{"W10":4,"W11":3,"W12":3,"W13":2,"W14":1,"W15":1,"W16":1,"W17":2},"firstReply":{"W10":4.09,"W11":4.22,"W12":6.03,"W13":4.1,"W14":6.91,"W15":5.26,"W16":7.11,"W17":7.05},"frt":{"W10":13.54,"W11":12.27,"W12":13.74,"W13":11.7,"W14":22.33,"W15":18.94,"W16":19.55,"W17":22.49},"csat":{"W10":66,"W11":69,"W12":68,"W13":69,"W14":99,"W15":100,"W16":99,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Home","l4":"Company Setting","metrics":{"count":{"W10":3,"W11":2,"W12":2,"W13":2,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":3,"W11":3.47,"W12":5.43,"W13":4.43,"W14":6.66,"W15":6.13,"W16":7.82,"W17":7.32},"frt":{"W10":11.97,"W11":12.22,"W12":13.48,"W13":11.75,"W14":20.4,"W15":18.88,"W16":18.78,"W17":19.51},"csat":{"W10":68,"W11":69,"W12":67,"W13":68,"W14":100,"W15":98,"W16":99,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"eSIM store","l4":"eSIM information","metrics":{"count":{"W10":1,"W11":1,"W12":1,"W13":1,"W17":1},"firstReply":{"W10":4.05,"W11":5.29,"W12":5.04,"W13":4.43,"W14":4.02,"W15":3.53,"W16":4.31,"W17":6.01},"frt":{"W10":12.59,"W11":12.19,"W12":12.75,"W13":12.04,"W14":12.42,"W15":13.7,"W16":14.3,"W17":13.39},"csat":{"W10":100,"W11":100,"W12":98,"W13":100,"W17":97},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"eSIM store","l4":"Payment","metrics":{"count":{"W10":1,"W11":2,"W12":1,"W13":2,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":5.03,"W11":5.1,"W12":4.98,"W13":3.27,"W14":3.79,"W15":3.55,"W16":3.68,"W17":3.57},"frt":{"W10":12.93,"W11":13.34,"W12":13.42,"W13":12.06,"W14":13.88,"W15":12.25,"W16":12.67,"W17":13.84},"csat":{"W10":98,"W11":99,"W12":99,"W13":100,"W14":98,"W15":98,"W16":100,"W17":99},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"eSIM store","l4":"Discount","metrics":{"count":{"W10":1,"W11":2,"W12":2,"W13":2,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":3.88,"W11":4.71,"W12":3.54,"W13":4.89,"W14":3.16,"W15":3.98,"W16":5.59,"W17":4.63},"frt":{"W10":13.87,"W11":11.93,"W12":11.96,"W13":14.27,"W14":12.24,"W15":12.74,"W16":13.93,"W17":12.09},"csat":{"W10":100,"W11":100,"W12":99,"W13":99,"W14":98,"W15":100,"W16":98,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"eSIM store","l4":"Purchase eSIM","metrics":{"count":{"W10":1,"W11":1,"W12":1,"W13":2,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":5.39,"W11":5.21,"W12":5.64,"W13":3.14,"W14":4.82,"W15":5.22,"W16":4.01,"W17":5.03},"frt":{"W10":12.18,"W11":12.41,"W12":13.78,"W13":11.99,"W14":14.48,"W15":13.54,"W16":12.45,"W17":12.05},"csat":{"W10":99,"W11":99,"W12":100,"W13":100,"W14":98,"W15":100,"W16":99,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"eSIM store","l4":"Out of Order Package","metrics":{"count":{"W10":1,"W11":1,"W12":1,"W13":1,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":4.83,"W11":4.97,"W12":4.52,"W13":3.51,"W14":4.38,"W15":5.75,"W16":3.51,"W17":5.74},"frt":{"W10":12.52,"W11":13.7,"W12":14.24,"W13":13.06,"W14":13.73,"W15":13.77,"W16":13.46,"W17":13.68},"csat":{"W10":100,"W11":100,"W12":100,"W13":100,"W14":98,"W15":99,"W16":100,"W17":98},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"eSIM store","l4":"eSIM Price","metrics":{"count":{"W10":1,"W11":2,"W12":2,"W13":2,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":4.06,"W11":5.05,"W12":4.37,"W13":4.57,"W14":4.42,"W15":4.44,"W16":4.79,"W17":5.51},"frt":{"W10":12.28,"W11":12.31,"W12":12.87,"W13":12.01,"W14":12.24,"W15":11.97,"W16":13.62,"W17":12.52},"csat":{"W10":100,"W11":100,"W12":100,"W13":100,"W14":99,"W15":98,"W16":99,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"eSIM store","l4":"Others","metrics":{"count":{"W10":1,"W11":1,"W12":1,"W13":2,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":3.66,"W11":4.35,"W12":4.27,"W13":3.38,"W14":4.88,"W15":5.17,"W16":4.1,"W17":5.19},"frt":{"W10":13.41,"W11":13.67,"W12":13.86,"W13":13.06,"W14":12.41,"W15":13.89,"W16":12.47,"W17":13.19},"csat":{"W10":100,"W11":98,"W12":100,"W13":100,"W14":98,"W15":98,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"eSIMs","l4":"eSIM assignment","metrics":{"count":{"W10":3,"W11":4,"W12":5,"W13":4,"W14":2,"W15":2,"W16":2,"W17":2},"firstReply":{"W10":4.74,"W11":4.39,"W12":4.51,"W13":5.65,"W14":5.47,"W15":4.25,"W16":4.16,"W17":5.27},"frt":{"W10":11.97,"W11":11.85,"W12":13.78,"W13":14.03,"W14":12.32,"W15":12.78,"W16":13.42,"W17":13.42},"csat":{"W10":94,"W11":93,"W12":94,"W13":96,"W14":100,"W15":98,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"eSIMs","l4":"Renewal","metrics":{"count":{"W10":3,"W11":3,"W12":4,"W13":3,"W14":2,"W15":2,"W16":2,"W17":1},"firstReply":{"W10":4.03,"W11":4.09,"W12":4.33,"W13":4.13,"W14":4.89,"W15":4.49,"W16":3.42,"W17":5.16},"frt":{"W10":12.81,"W11":11.82,"W12":12.98,"W13":13.43,"W14":13.8,"W15":11.68,"W16":12.13,"W17":12.35},"csat":{"W10":95,"W11":93,"W12":95,"W13":96,"W14":100,"W15":98,"W16":100,"W17":99},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"eSIMs","l4":"eSIM sharing","metrics":{"count":{"W10":3,"W11":3,"W12":4,"W13":4,"W14":2,"W15":2,"W16":2,"W17":1},"firstReply":{"W10":5.27,"W11":5.19,"W12":6.13,"W13":5.05,"W14":4.35,"W15":5.67,"W16":5.3,"W17":5.03},"frt":{"W10":12.96,"W11":13.56,"W12":13.89,"W13":14.02,"W14":11.64,"W15":13.62,"W16":13.96,"W17":13.56},"csat":{"W10":92,"W11":93,"W12":93,"W13":93,"W14":99,"W15":100,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"eSIMs","l4":"Top-up","metrics":{"count":{"W10":2,"W11":2,"W12":3,"W13":2,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":4.75,"W11":4.77,"W12":3.75,"W13":4.35,"W14":4.86,"W15":3.93,"W16":3.21,"W17":4.61},"frt":{"W10":12.94,"W11":12.17,"W12":11.92,"W13":11.65,"W14":13.32,"W15":12.53,"W16":12.18,"W17":12.91},"csat":{"W10":92,"W11":93,"W12":92,"W13":97,"W14":100,"W15":100,"W16":98,"W17":99},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"eSIMs","l4":"eSIM Status","metrics":{"count":{"W10":2,"W11":3,"W12":3,"W13":3,"W14":1,"W15":2,"W16":1,"W17":1},"firstReply":{"W10":5.38,"W11":4.72,"W12":5.07,"W13":5.42,"W14":3.87,"W15":4.54,"W16":3.54,"W17":4.91},"frt":{"W10":14.03,"W11":12.66,"W12":13.11,"W13":12.34,"W14":12.61,"W15":13.96,"W16":13.68,"W17":13.93},"csat":{"W10":91,"W11":96,"W12":97,"W13":96,"W14":100,"W15":100,"W16":100,"W17":98},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"eSIMs","l4":"Phone number","metrics":{"count":{"W10":1,"W11":2,"W12":2,"W13":2,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":4.6,"W11":5.32,"W12":3.91,"W13":3.4,"W14":4.25,"W15":3.95,"W16":4.24,"W17":4.16},"frt":{"W10":11.79,"W11":14.02,"W12":13.93,"W13":12.7,"W14":11.75,"W15":13.09,"W16":12.61,"W17":11.65},"csat":{"W10":94,"W11":96,"W12":95,"W13":93,"W14":100,"W15":98,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"eSIMs","l4":"eSIM Cloud","metrics":{"count":{"W10":3,"W11":4,"W12":5,"W13":4,"W14":2,"W15":2,"W16":2,"W17":2},"firstReply":{"W10":3.96,"W11":4.32,"W12":4.23,"W13":5.99,"W14":5.19,"W15":4.43,"W16":5.08,"W17":4.41},"frt":{"W10":11.74,"W11":12.53,"W12":12.89,"W13":13.56,"W14":11.98,"W15":13.66,"W16":14.06,"W17":11.93},"csat":{"W10":96,"W11":95,"W12":92,"W13":94,"W14":100,"W15":100,"W16":100,"W17":97},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"eSIMs","l4":"eSIM Validation","metrics":{"count":{"W10":3,"W11":3,"W12":4,"W13":3,"W14":2,"W15":2,"W16":2,"W17":1},"firstReply":{"W10":3.49,"W11":5.04,"W12":6.15,"W13":3.91,"W14":4.65,"W15":3.55,"W16":4.97,"W17":4.74},"frt":{"W10":12.09,"W11":11.98,"W12":13.7,"W13":12.7,"W14":11.78,"W15":12.87,"W16":13.3,"W17":13.93},"csat":{"W10":96,"W11":96,"W12":97,"W13":94,"W14":98,"W15":99,"W16":98,"W17":99},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"eSIMs","l4":"Data usage","metrics":{"count":{"W10":2,"W11":3,"W12":3,"W13":3,"W14":1,"W15":2,"W16":1,"W17":1},"firstReply":{"W10":5.61,"W11":5.05,"W12":3.95,"W13":4.8,"W14":3.83,"W15":5.55,"W16":3,"W17":4.73},"frt":{"W10":13.41,"W11":11.86,"W12":12.7,"W13":12.93,"W14":13.78,"W15":13,"W16":11.81,"W17":12.92},"csat":{"W10":94,"W11":95,"W12":93,"W13":92,"W14":100,"W15":99,"W16":97,"W17":97},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"eSIMs","l4":"Export eSIMs","metrics":{"count":{"W10":2,"W11":2,"W12":3,"W13":2,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":4.16,"W11":4.19,"W12":5.38,"W13":3.85,"W14":3.7,"W15":6.24,"W16":4.35,"W17":3.2},"frt":{"W10":13.5,"W11":12.71,"W12":12.81,"W13":13.58,"W14":12.94,"W15":14.06,"W16":13.51,"W17":12.17},"csat":{"W10":95,"W11":94,"W12":95,"W13":95,"W14":100,"W15":100,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Orders Platform","l4":"Order Status - In progress","metrics":{"count":{"W10":2,"W11":2,"W12":2,"W13":4,"W14":3,"W15":3,"W16":3,"W17":4},"firstReply":{"W10":7.77,"W11":6.13,"W12":7.39,"W13":6.99,"W14":4.92,"W15":5.1,"W16":3.6,"W17":4.32},"frt":{"W10":21.66,"W11":18.98,"W12":20.92,"W13":19.8,"W14":14.17,"W15":14.55,"W16":13.55,"W17":15.02},"csat":{"W10":99,"W11":100,"W12":100,"W13":100,"W14":100,"W15":100,"W16":98,"W17":98},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Orders Platform","l4":"Order Status - Failed","metrics":{"count":{"W10":2,"W11":2,"W12":2,"W13":4,"W14":3,"W15":3,"W16":3,"W17":4},"firstReply":{"W10":7.33,"W11":7.97,"W12":6.7,"W13":4.88,"W14":4.47,"W15":5.06,"W16":5.83,"W17":4.03},"frt":{"W10":21.19,"W11":19.13,"W12":18.36,"W13":18.92,"W14":14.81,"W15":13.67,"W16":14.79,"W17":15.07},"csat":{"W10":100,"W11":98,"W12":97,"W13":100,"W14":97,"W15":100,"W16":97,"W17":99},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Orders Platform","l4":"Order Status - Others","metrics":{"count":{"W10":2,"W11":2,"W12":2,"W13":3,"W14":3,"W15":3,"W16":3,"W17":4},"firstReply":{"W10":8.58,"W11":5.76,"W12":7.23,"W13":6.76,"W14":5.68,"W15":4.09,"W16":5,"W17":4.65},"frt":{"W10":20.71,"W11":19.01,"W12":21.21,"W13":20.67,"W14":13.46,"W15":14.61,"W16":13.42,"W17":13.25},"csat":{"W10":100,"W11":100,"W12":99,"W13":98,"W14":98,"W15":100,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Orders Platform","l4":"Package not added","metrics":{"count":{"W10":2,"W11":2,"W12":2,"W13":3,"W14":3,"W15":3,"W16":3,"W17":4},"firstReply":{"W10":8.32,"W11":5.27,"W12":8.38,"W13":7.9,"W14":5.96,"W15":4.64,"W16":4.24,"W17":4.52},"frt":{"W10":21.91,"W11":20.39,"W12":20.42,"W13":21.48,"W14":15.3,"W15":13.43,"W16":13.82,"W17":15.7},"csat":{"W10":100,"W11":99,"W12":98,"W13":99,"W14":100,"W15":98,"W16":100,"W17":99},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Orders Platform","l4":"Export Orders","metrics":{"count":{"W10":1,"W11":1,"W12":1,"W13":2,"W14":1,"W15":1,"W16":1,"W17":2},"firstReply":{"W10":6.55,"W11":7.51,"W12":6.46,"W13":7.63,"W14":6.24,"W15":5.25,"W16":4.43,"W17":6.4},"frt":{"W10":20.93,"W11":19.74,"W12":19.3,"W13":19.75,"W14":15.34,"W15":14.55,"W16":13.88,"W17":15.2},"csat":{"W10":100,"W11":98,"W12":100,"W13":99,"W14":99,"W15":99,"W16":99,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Voucher","l4":"Voucher - How to use","metrics":{"count":{},"firstReply":{"W10":3.89,"W11":6.51,"W12":4.18,"W13":4.04,"W14":9.32,"W15":12.84,"W16":12.37,"W17":14.06},"frt":{"W10":14.51,"W11":14.96,"W12":15.89,"W13":15.2,"W14":28.5,"W15":34.44,"W16":31.53,"W17":32.01},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Voucher","l4":"Voucher - Order Failed","metrics":{"count":{},"firstReply":{"W10":5.25,"W11":5.4,"W12":4.79,"W13":3.87,"W14":7.44,"W15":13.14,"W16":10.63,"W17":11.29},"frt":{"W10":17.08,"W11":14.6,"W12":16.15,"W13":15.04,"W14":29.76,"W15":29.25,"W16":33.16,"W17":30.74},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Voucher","l4":"Voucher - Redemption Checking","metrics":{"count":{},"firstReply":{"W10":7.43,"W11":6.91,"W12":5.71,"W13":6.59,"W14":9.63,"W15":8.36,"W16":8.87,"W17":14.05},"frt":{"W10":17.16,"W11":15.61,"W12":15.38,"W13":15.12,"W14":31.87,"W15":30.82,"W16":28.71,"W17":34.21},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Voucher","l4":"Assign/share voucher","metrics":{"count":{},"firstReply":{"W10":6.38,"W11":6.81,"W12":6.01,"W13":5.87,"W14":7.77,"W15":10.8,"W16":13.3,"W17":9.3},"frt":{"W10":17.6,"W11":16.97,"W12":17.59,"W13":15.97,"W14":28.43,"W15":28.68,"W16":34.5,"W17":29.7},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Voucher","l4":"Export voucher","metrics":{"count":{},"firstReply":{"W10":5.69,"W11":4.54,"W12":6.04,"W13":6.7,"W14":13.16,"W15":14.06,"W16":9.1,"W17":13.96},"frt":{"W10":14.79,"W11":17.13,"W12":17.49,"W13":15.63,"W14":29.95,"W15":32.55,"W16":31.39,"W17":32.88},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Users","l4":"Role","metrics":{"count":{"W10":1,"W11":1,"W12":1,"W13":1,"W17":1},"firstReply":{"W10":3.46,"W11":4.41,"W12":5.9,"W13":5.49,"W14":3.66,"W15":3.44,"W16":4.76,"W17":4.31},"frt":{"W10":13.37,"W11":12.66,"W12":13.93,"W13":12.68,"W14":12.43,"W15":13.2,"W16":13.78,"W17":13.11},"csat":{"W10":100,"W11":100,"W12":100,"W13":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Users","l4":"Add/Edit users","metrics":{"count":{},"firstReply":{"W10":5.42,"W11":4.89,"W12":3.35,"W13":4.07,"W14":4.01,"W15":3.91,"W16":4.82,"W17":4.42},"frt":{"W10":13.91,"W11":12.6,"W12":11.46,"W13":12.91,"W14":13.29,"W15":13.13,"W16":12.93,"W17":12.65},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Credits","l4":"Add credits","metrics":{"count":{"W10":1,"W11":1,"W12":1,"W13":1},"firstReply":{"W10":7.45,"W11":6.27,"W12":8.95,"W13":9.36},"frt":{"W10":22.83,"W11":22.39,"W12":25.57,"W13":26.49},"csat":{"W10":100,"W11":100,"W12":98,"W13":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Credits","l4":"Purchase pending","metrics":{"count":{"W10":1,"W11":2,"W12":1,"W13":2},"firstReply":{"W10":8.04,"W11":10.33,"W12":8.16,"W13":8.44},"frt":{"W10":24.4,"W11":25.02,"W12":23.99,"W13":23.3},"csat":{"W10":100,"W11":97,"W12":100,"W13":99},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Credits","l4":"Purchase Issue","metrics":{"count":{"W10":1,"W11":1,"W12":1,"W13":1},"firstReply":{"W10":9.86,"W11":8.6,"W12":7.23,"W13":9.9},"frt":{"W10":22.27,"W11":22.65,"W12":22.53,"W13":24.93},"csat":{"W10":100,"W11":100,"W12":100,"W13":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Billing","l4":"Pay Invoice","metrics":{"count":{"W10":1,"W13":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":3.7,"W11":4.59,"W12":4.11,"W13":5,"W14":7.75,"W15":7.89,"W16":8.58,"W17":5.28},"frt":{"W10":12.01,"W11":12.11,"W12":12.12,"W13":13.62,"W14":23.28,"W15":19.95,"W16":21.99,"W17":19.51},"csat":{"W10":99,"W13":99,"W15":97,"W16":100,"W17":98},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Billing","l4":"Export Invoice","metrics":{"count":{"W10":1,"W11":1,"W12":1,"W13":1,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":4.04,"W11":5.05,"W12":3.75,"W13":5.44,"W14":8.14,"W15":9.15,"W16":7.28,"W17":6.65},"frt":{"W10":13.37,"W11":11.82,"W12":12.22,"W13":13.02,"W14":19.29,"W15":20.56,"W16":21.47,"W17":23.3},"csat":{"W10":97,"W11":100,"W12":98,"W13":98,"W14":100,"W15":100,"W16":99,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Billing","l4":"Export Invoice details","metrics":{"count":{"W10":1,"W13":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":4.17,"W11":5.26,"W12":4.06,"W13":3.02,"W14":9.5,"W15":5.19,"W16":7.98,"W17":5.93},"frt":{"W10":13.05,"W11":12.8,"W12":12.55,"W13":12.09,"W14":22.64,"W15":20.63,"W16":23.1,"W17":19.21},"csat":{"W10":99,"W13":99,"W15":100,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Billing","l4":"Incorrect data","metrics":{"count":{"W10":1,"W13":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":4.94,"W11":4.04,"W12":4.05,"W13":5.2,"W14":8.75,"W15":8.39,"W16":6,"W17":7.62},"frt":{"W10":12.43,"W11":12.42,"W12":12.1,"W13":12.04,"W14":22.61,"W15":20.38,"W16":20.93,"W17":20.4},"csat":{"W10":98,"W13":100,"W15":100,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Billing","l4":"Others","metrics":{"count":{"W17":1},"firstReply":{"W10":3.67,"W11":3.55,"W12":5.24,"W13":3.37,"W14":6.77,"W15":8.4,"W16":8.03,"W17":9.44},"frt":{"W10":12.79,"W11":11.69,"W12":13.25,"W13":12.02,"W14":21.27,"W15":20.5,"W16":23.42,"W17":22.54},"csat":{"W17":99},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Analytics","l4":null,"metrics":{"count":{"W17":1},"firstReply":{"W14":3.64,"W15":5.61,"W16":3.71,"W17":5.41},"frt":{"W14":12.62,"W15":13.57,"W16":13.53,"W17":13.38},"csat":{"W17":98},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Help and Support","l4":"Support method","metrics":{"count":{"W14":3,"W15":3,"W16":3,"W17":2},"firstReply":{"W10":3.5,"W11":5.08,"W12":4.74,"W13":5.3,"W14":1.73,"W15":1.72,"W16":2.3,"W17":2.16},"frt":{"W10":13.54,"W11":14.35,"W12":12.55,"W13":12.4,"W14":6.33,"W15":6.06,"W16":5.64,"W17":5.32},"csat":{"W14":98,"W15":99,"W16":98,"W17":97},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Help and Support","l4":"FAQ","metrics":{"count":{"W14":3,"W15":2,"W16":3,"W17":1},"firstReply":{"W10":3.41,"W11":4.53,"W12":6.44,"W13":3.54,"W14":2.48,"W15":2.44,"W16":2.57,"W17":2.26},"frt":{"W10":12.12,"W11":12.12,"W12":14.34,"W13":13.53,"W14":6.07,"W15":5.46,"W16":6.24,"W17":5.83},"csat":{"W14":100,"W15":98,"W16":100,"W17":98},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Help and Support","l4":"Feedback","metrics":{"count":{"W14":3,"W15":3,"W16":3,"W17":2},"firstReply":{"W10":4.44,"W11":4.93,"W12":3.56,"W13":5.07,"W14":2.44,"W15":1.67,"W16":1.83,"W17":1.73},"frt":{"W10":13.16,"W11":12.66,"W12":12.38,"W13":12.8,"W14":5.63,"W15":5.96,"W16":5.66,"W17":5.31},"csat":{"W14":100,"W15":97,"W16":99,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Partner Onboarding","l4":"Access blocked","metrics":{"count":{},"firstReply":{"W14":4.19,"W15":4.46,"W16":4.78,"W17":4.63},"frt":{"W14":12.8,"W15":12.76,"W16":12.83,"W17":12.25},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Partner Onboarding","l4":"Checklist/step stuck","metrics":{"count":{},"firstReply":{"W14":3.74,"W15":3.96,"W16":3.42,"W17":5.37},"frt":{"W14":13.55,"W15":13.65,"W16":12.66,"W17":12.88},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Partner Onboarding","l4":"Others","metrics":{"count":{},"firstReply":{"W14":3.91,"W15":3.43,"W16":4.02,"W17":5.43},"frt":{"W14":12.08,"W15":12.97,"W16":13.79,"W17":12.68},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Sanction Screening","l4":null,"metrics":{"count":{"W17":1},"firstReply":{"W14":0.18,"W15":0.19,"W16":0.16,"W17":0.14},"frt":{"W14":0.54,"W15":0.49,"W16":0.53,"W17":0.45},"csat":{"W17":97},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Partner Platform","l3":"Test","l4":null,"metrics":{"count":{"W10":1,"W11":1,"W14":2,"W15":2,"W16":2,"W17":2},"firstReply":{"W14":0.06,"W15":0.07,"W16":0.06,"W17":0.06},"frt":{"W14":0.21,"W15":0.21,"W16":0.21,"W17":0.19},"csat":{"W10":100,"W11":98,"W14":99,"W15":99,"W16":100,"W17":99},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"API - Production","l4":"API Mode","metrics":{"count":{"W10":2,"W11":4,"W12":3,"W13":3,"W14":2,"W15":3,"W16":2,"W17":2},"firstReply":{"W10":5.28,"W11":5.23,"W12":4.6,"W13":3.24,"W14":7.15,"W15":9.68,"W16":6.58,"W17":7.48},"frt":{"W10":13.36,"W11":14.8,"W12":14.83,"W13":12.75,"W14":23.42,"W15":22.24,"W16":20.48,"W17":20.41},"csat":{"W10":99,"W11":100,"W12":99,"W13":100,"W14":100,"W15":100,"W16":97,"W17":99},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"API - Production","l4":"Authentication","metrics":{"count":{"W10":3,"W11":4,"W12":3,"W13":3,"W14":2,"W15":3,"W16":2,"W17":2},"firstReply":{"W10":6.05,"W11":5.45,"W12":3.58,"W13":5.88,"W14":9.17,"W15":7.71,"W16":6.48,"W17":7.57},"frt":{"W10":14.01,"W11":13.76,"W12":13.71,"W13":14.23,"W14":21.63,"W15":20.8,"W16":19.85,"W17":21.14},"csat":{"W10":100,"W11":99,"W12":97,"W13":99,"W14":100,"W15":100,"W16":100,"W17":97},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"API - Production","l4":"Endpoints","metrics":{"count":{"W10":2,"W11":3,"W12":2,"W13":2,"W14":2,"W15":2,"W16":2,"W17":2},"firstReply":{"W10":3.57,"W11":3.21,"W12":4.64,"W13":3.94,"W14":8.47,"W15":8.2,"W16":8.46,"W17":5.69},"frt":{"W10":12.93,"W11":12.37,"W12":13.23,"W13":14.24,"W14":22.26,"W15":20.66,"W16":20.88,"W17":21.22},"csat":{"W10":99,"W11":100,"W12":98,"W13":98,"W14":100,"W15":100,"W16":97,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"API - Production","l4":"Error Code","metrics":{"count":{"W10":2,"W11":3,"W12":2,"W13":2,"W14":2,"W15":2,"W16":2,"W17":2},"firstReply":{"W10":3.45,"W11":4.66,"W12":3.87,"W13":5.35,"W14":5.97,"W15":7.77,"W16":7.12,"W17":6.25},"frt":{"W10":13.34,"W11":14.36,"W12":14.2,"W13":12.3,"W14":23.62,"W15":22.85,"W16":19.9,"W17":20.7},"csat":{"W10":98,"W11":98,"W12":100,"W13":100,"W14":100,"W15":98,"W16":98,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"API - Production","l4":"eSims","metrics":{"count":{"W10":1,"W11":2,"W12":1,"W13":1,"W14":1,"W15":2,"W16":1,"W17":1},"firstReply":{"W10":3.72,"W11":4.56,"W12":4.92,"W13":6.13,"W14":7.39,"W15":7.55,"W16":6.78,"W17":9.58},"frt":{"W10":14.28,"W11":13.92,"W12":12.88,"W13":14.48,"W14":22.66,"W15":24.1,"W16":23.61,"W17":22},"csat":{"W10":100,"W11":97,"W12":100,"W13":97,"W14":98,"W15":98,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"API - Production","l4":"Orders","metrics":{"count":{"W10":2,"W11":3,"W12":2,"W13":2,"W14":2,"W15":2,"W16":2,"W17":2},"firstReply":{"W10":6.1,"W11":5.92,"W12":5.18,"W13":5.54,"W14":7.41,"W15":9.01,"W16":5.84,"W17":7.6},"frt":{"W10":14.79,"W11":13.84,"W12":14.35,"W13":12.91,"W14":22.69,"W15":24.03,"W16":20.8,"W17":24.07},"csat":{"W10":100,"W11":100,"W12":97,"W13":98,"W14":98,"W15":100,"W16":98,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"API - Production","l4":"Orders Status","metrics":{"count":{"W10":2,"W11":3,"W12":2,"W13":2,"W14":2,"W15":2,"W16":2,"W17":2},"firstReply":{"W10":4.14,"W11":4.6,"W12":3.74,"W13":5.14,"W14":7.71,"W15":9.44,"W16":7.23,"W17":6.67},"frt":{"W10":14.84,"W11":14.67,"W12":13.65,"W13":13.01,"W14":23.17,"W15":21.61,"W16":23.73,"W17":23.23},"csat":{"W10":100,"W11":100,"W12":100,"W13":100,"W14":100,"W15":100,"W16":100,"W17":98},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"API - Production","l4":"Packages","metrics":{"count":{"W10":2,"W11":3,"W12":2,"W13":2,"W14":2,"W15":2,"W16":2,"W17":2},"firstReply":{"W10":5.3,"W11":4.58,"W12":3.21,"W13":4.32,"W14":9.68,"W15":10.07,"W16":8.4,"W17":6.36},"frt":{"W10":13.51,"W11":13.16,"W12":12.52,"W13":14.21,"W14":21.62,"W15":23.13,"W16":24.14,"W17":21.23},"csat":{"W10":100,"W11":100,"W12":98,"W13":97,"W14":100,"W15":97,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"API - Production","l4":"Test","metrics":{"count":{"W10":2,"W11":3,"W12":3,"W13":3,"W14":2,"W15":3,"W16":2,"W17":2},"firstReply":{"W10":4.86,"W11":6.46,"W12":5.38,"W13":5.14,"W14":6.6,"W15":7.24,"W16":5.65,"W17":9.18},"frt":{"W10":14.27,"W11":14.38,"W12":13.55,"W13":13.66,"W14":20.02,"W15":21.14,"W16":21.66,"W17":22.07},"csat":{"W10":100,"W11":97,"W12":99,"W13":100,"W14":99,"W15":100,"W16":100,"W17":98},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"API - Production","l4":"Webhook","metrics":{"count":{"W10":1,"W11":2,"W12":2,"W13":2,"W14":1,"W15":2,"W16":1,"W17":1},"firstReply":{"W10":3.99,"W11":5.2,"W12":5.75,"W13":4.24,"W14":6.99,"W15":10.24,"W16":8.67,"W17":9.09},"frt":{"W10":13.74,"W11":13.38,"W12":14.6,"W13":12.48,"W14":21.4,"W15":23.28,"W16":21.47,"W17":23.81},"csat":{"W10":100,"W11":99,"W12":100,"W13":98,"W14":100,"W15":100,"W16":99,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"API - Sandbox","l4":"API Documentation","metrics":{"count":{"W10":1,"W11":1,"W12":1,"W13":1,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":6.05,"W11":6.72,"W12":6.57,"W13":4.86,"W14":3.23,"W15":6.04,"W16":3.37,"W17":5.11},"frt":{"W10":17.53,"W11":18.17,"W12":17.56,"W13":18.71,"W14":12.55,"W15":14.46,"W16":12.96,"W17":13.28},"csat":{"W10":100,"W11":97,"W12":100,"W13":100,"W14":100,"W15":100,"W16":100,"W17":98},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"API - Sandbox","l4":"API Mode","metrics":{"count":{"W10":1,"W11":1,"W12":1,"W13":1,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":6.06,"W11":5.18,"W12":6.83,"W13":6.92,"W14":4.68,"W15":5.75,"W16":4.51,"W17":4.9},"frt":{"W10":18.05,"W11":18.69,"W12":19.22,"W13":18.59,"W14":12.45,"W15":14.82,"W16":14.67,"W17":13.79},"csat":{"W10":97,"W11":99,"W12":99,"W13":100,"W14":100,"W15":100,"W16":100,"W17":99},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"API - Sandbox","l4":"Authentication","metrics":{"count":{"W11":1,"W13":1},"firstReply":{"W10":4.24,"W11":7.96,"W12":8.82,"W13":6.58,"W14":3.5,"W15":3.89,"W16":4.45,"W17":4.26},"frt":{"W10":16.66,"W11":18.96,"W12":19.61,"W13":18.18,"W14":13.87,"W15":12.69,"W16":14.28,"W17":13.52},"csat":{"W11":98,"W13":99},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"API - Sandbox","l4":"Endpoints","metrics":{"count":{"W10":1,"W11":1,"W12":1,"W13":1,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":6.79,"W11":6.78,"W12":5.95,"W13":6.01,"W14":5.04,"W15":5.21,"W16":6.46,"W17":5.77},"frt":{"W10":19.6,"W11":18.97,"W12":17.89,"W13":19.4,"W14":14.11,"W15":12.71,"W16":14.55,"W17":12.91},"csat":{"W10":100,"W11":100,"W12":100,"W13":100,"W14":99,"W15":100,"W16":99,"W17":97},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"API - Sandbox","l4":"Error Code","metrics":{"count":{"W10":1,"W11":1,"W12":1,"W13":1,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":6.29,"W11":6.26,"W12":6.92,"W13":5.11,"W14":3.87,"W15":5.19,"W16":6.04,"W17":5.54},"frt":{"W10":18.49,"W11":20.17,"W12":17.07,"W13":20.03,"W14":13.45,"W15":14.64,"W16":14.24,"W17":14.37},"csat":{"W10":98,"W11":98,"W12":100,"W13":100,"W14":100,"W15":100,"W16":98,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"API - Sandbox","l4":"eSims","metrics":{"count":{},"firstReply":{"W10":5.96,"W11":5.97,"W12":5.87,"W13":6.27,"W14":3.87,"W15":4.4,"W16":3.49,"W17":3.26},"frt":{"W10":16.82,"W11":19.09,"W12":18.79,"W13":19.95,"W14":12.67,"W15":13.01,"W16":12.47,"W17":12.89},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"API - Sandbox","l4":"Orders","metrics":{"count":{"W10":1,"W11":1,"W12":1,"W13":1,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":4.94,"W11":4.99,"W12":4.82,"W13":7.87,"W14":4.39,"W15":5.52,"W16":5.45,"W17":5.53},"frt":{"W10":17.9,"W11":18.39,"W12":16.85,"W13":18.86,"W14":14.04,"W15":14.36,"W16":13.59,"W17":13.41},"csat":{"W10":100,"W11":100,"W12":100,"W13":100,"W14":100,"W15":100,"W16":100,"W17":98},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"API - Sandbox","l4":"Orders Status","metrics":{"count":{"W11":1,"W13":1,"W16":1},"firstReply":{"W10":7.06,"W11":8.15,"W12":4.69,"W13":6.3,"W14":5.09,"W15":3.8,"W16":5.09,"W17":4.95},"frt":{"W10":18.1,"W11":19.11,"W12":18.33,"W13":18.41,"W14":12.61,"W15":13.78,"W16":12.43,"W17":13.03},"csat":{"W11":100,"W13":99,"W16":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"API - Sandbox","l4":"Packages","metrics":{"count":{"W11":1,"W13":1,"W16":1},"firstReply":{"W10":6.59,"W11":5.81,"W12":5.07,"W13":6.98,"W14":4.71,"W15":5.66,"W16":3.33,"W17":5.14},"frt":{"W10":19.55,"W11":19.56,"W12":19.1,"W13":20.09,"W14":13.75,"W15":13.65,"W16":12.63,"W17":12.44},"csat":{"W11":100,"W13":100,"W16":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"API - Sandbox","l4":"Test","metrics":{"count":{},"firstReply":{"W10":6.13,"W11":6.61,"W12":6.71,"W13":6.49,"W14":4.55,"W15":4.95,"W16":4.72,"W17":3.12},"frt":{"W10":17.2,"W11":18.09,"W12":17.37,"W13":17.82,"W14":14.62,"W15":14.7,"W16":14.8,"W17":12.39},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"API - Sandbox","l4":"Webhook","metrics":{"count":{"W10":1,"W11":1,"W12":1,"W13":1,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":7.75,"W11":5.91,"W12":6.91,"W13":6.02,"W14":4.11,"W15":4.11,"W16":4.87,"W17":6.03},"frt":{"W10":19.85,"W11":18.11,"W12":18.06,"W13":18.41,"W14":14.65,"W15":14.84,"W16":12.34,"W17":13.46},"csat":{"W10":98,"W11":99,"W12":100,"W13":98,"W14":100,"W15":100,"W16":97,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"Plugin - WooCommerce","l4":"Authentication","metrics":{"count":{"W10":1,"W11":1,"W12":1,"W13":1},"firstReply":{"W10":18.72,"W11":22.28,"W12":21.95,"W13":22.35,"W14":4.19,"W15":6.78,"W16":6.45,"W17":3.83},"frt":{"W10":62.97,"W11":62.02,"W12":60.35,"W13":64.54,"W14":15.05,"W15":15.17,"W16":15.9,"W17":14.4},"csat":{"W10":100,"W11":99,"W12":100,"W13":98},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"Plugin - WooCommerce","l4":"Sync Error","metrics":{"count":{},"firstReply":{"W10":26.08,"W11":15.55,"W12":24.37,"W13":21.72,"W14":5.72,"W15":6.31,"W16":4.73,"W17":5.71},"frt":{"W10":63.66,"W11":59.67,"W12":60.06,"W13":61.61,"W14":14.41,"W15":14.27,"W16":15.36,"W17":13.15},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"Plugin - WooCommerce","l4":"Setup","metrics":{"count":{"W10":1,"W11":1,"W12":1,"W13":1},"firstReply":{"W10":23.24,"W11":16.93,"W12":18.97,"W13":24.22,"W14":3.56,"W15":4.99,"W16":4.58,"W17":4.65},"frt":{"W10":56.44,"W11":63.54,"W12":62.07,"W13":57.44,"W14":13.09,"W15":13.56,"W16":13.49,"W17":15.39},"csat":{"W10":100,"W11":99,"W12":100,"W13":99},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"Plugin - WooCommerce","l4":"Payment","metrics":{"count":{"W10":1,"W11":1,"W12":1,"W13":1},"firstReply":{"W10":16.18,"W11":25.03,"W12":22.18,"W13":18.63,"W14":5.98,"W15":3.8,"W16":4.41,"W17":6.09},"frt":{"W10":57.6,"W11":61.95,"W12":58.75,"W13":58.41,"W14":14.91,"W15":13.39,"W16":14.21,"W17":15.21},"csat":{"W10":100,"W11":100,"W12":100,"W13":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"Plugin - WooCommerce","l4":"eSIM","metrics":{"count":{},"firstReply":{"W10":24.36,"W11":23.67,"W12":26.18,"W13":24.41,"W14":6.57,"W15":6.2,"W16":4.93,"W17":3.73},"frt":{"W10":55.95,"W11":61.37,"W12":67.73,"W13":56.31,"W14":14.9,"W15":14.3,"W16":15.54,"W17":13.82},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"Plugin - WooCommerce","l4":"Order","metrics":{"count":{"W13":1},"firstReply":{"W10":18.48,"W11":18.41,"W12":24.07,"W13":17.82,"W14":4.53,"W15":4.2,"W16":3.47,"W17":5.83},"frt":{"W10":58.22,"W11":64.36,"W12":62.59,"W13":66.11,"W14":13.35,"W15":13.69,"W16":13.61,"W17":13.32},"csat":{"W13":97},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"Plugin - Shopify","l4":"eSIM","metrics":{"count":{},"firstReply":{"W10":6.57,"W11":4.37,"W12":6.08,"W13":6.25,"W14":4.17,"W15":5.68,"W16":3.54,"W17":4.82},"frt":{"W10":15.31,"W11":14.55,"W12":13.91,"W13":14.39,"W14":12.42,"W15":14.05,"W16":12.54,"W17":11.89},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"Plugin - Shopify","l4":"Order","metrics":{"count":{},"firstReply":{"W10":4.63,"W11":4.82,"W12":5.66,"W13":4.56,"W14":4.87,"W15":4.65,"W16":5.53,"W17":3.17},"frt":{"W10":15.28,"W11":13.83,"W12":15.2,"W13":13.1,"W14":12.07,"W15":12.27,"W16":14.07,"W17":11.97},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"Plugin - Shopify","l4":"Sandbox","metrics":{"count":{},"firstReply":{"W10":4.23,"W11":6.28,"W12":4.39,"W13":6.27,"W14":4.66,"W15":4.92,"W16":5.37,"W17":5.59},"frt":{"W10":15.11,"W11":14.39,"W12":14.46,"W13":14.56,"W14":13.19,"W15":14.14,"W16":12.83,"W17":13.73},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"SDK - PHP","l4":"Setup Guide","metrics":{"count":{},"firstReply":{"W10":3.87,"W11":5.32,"W12":3.91,"W13":3.94,"W14":4.89,"W15":5.44,"W16":3.48,"W17":5.46},"frt":{"W10":14.53,"W11":13.19,"W12":13.69,"W13":12.07,"W14":12.57,"W15":14.46,"W16":13.02,"W17":13.76},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"SDK - PHP","l4":"Integration Issue","metrics":{"count":{},"firstReply":{"W10":4.18,"W11":5.58,"W12":5.92,"W13":3.15,"W14":3.66,"W15":5.09,"W16":4.73,"W17":5.9},"frt":{"W10":13.41,"W11":13.39,"W12":13.17,"W13":12.07,"W14":14.17,"W15":12.38,"W16":13.85,"W17":13.88},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"SDK - PHP","l4":"Authentication","metrics":{"count":{},"firstReply":{"W10":5.73,"W11":4.72,"W12":3.5,"W13":3.77,"W14":4.84,"W15":4.61,"W16":3.87,"W17":5.49},"frt":{"W10":13.22,"W11":12.09,"W12":12.32,"W13":12.1,"W14":14.19,"W15":12.52,"W16":14.25,"W17":13.39},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"SDK - PHP","l4":"WebHook issue","metrics":{"count":{},"firstReply":{"W10":5.71,"W11":3.75,"W12":5.8,"W13":5.16,"W14":3.55,"W15":4.14,"W16":5.02,"W17":5.76},"frt":{"W10":12.83,"W11":13.5,"W12":14.19,"W13":14,"W14":12.96,"W15":12.44,"W16":13.93,"W17":13.24},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"SDK - PHP","l4":"Orders","metrics":{"count":{},"firstReply":{"W10":3.33,"W11":3.33,"W12":5.86,"W13":5.38,"W14":5.49,"W15":4.77,"W16":4.47,"W17":5.42},"frt":{"W10":13.27,"W11":12.45,"W12":13.7,"W13":13.08,"W14":14.13,"W15":12.61,"W16":13.46,"W17":14.57},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"SDK - PHP","l4":"Others","metrics":{"count":{},"firstReply":{"W10":3.24,"W11":3.45,"W12":3.6,"W13":5.2,"W14":3.97,"W15":5.39,"W16":3.7,"W17":5.49},"frt":{"W10":12.9,"W11":12.6,"W12":13.38,"W13":12.93,"W14":13.51,"W15":14.12,"W16":12.8,"W17":14.19},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"SDK - Node JS","l4":"Setup Guide","metrics":{"count":{},"firstReply":{"W10":3.71,"W11":4.4,"W12":4.75,"W13":4.62,"W14":3.49,"W15":4.08,"W16":4.16,"W17":4.57},"frt":{"W10":13.02,"W11":12.69,"W12":11.08,"W13":12.53,"W14":12.06,"W15":12.94,"W16":13.2,"W17":11.5},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"SDK - Node JS","l4":"Integration Issue","metrics":{"count":{},"firstReply":{"W10":3.61,"W11":4.44,"W12":3.25,"W13":4.72,"W14":3.98,"W15":4.49,"W16":3.16,"W17":4.57},"frt":{"W10":12.94,"W11":13.03,"W12":11.73,"W13":12.53,"W14":13.69,"W15":11.57,"W16":11.4,"W17":13.38},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"SDK - Node JS","l4":"Authentication","metrics":{"count":{},"firstReply":{"W10":4.59,"W11":4.98,"W12":3.43,"W13":4.47,"W14":5.06,"W15":4.08,"W16":5.2,"W17":3.74},"frt":{"W10":12.33,"W11":11.21,"W12":12.85,"W13":12.86,"W14":13.74,"W15":13.34,"W16":13.08,"W17":11.87},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"SDK - Node JS","l4":"WebHook issue","metrics":{"count":{},"firstReply":{"W10":4.82,"W11":3.75,"W12":3.24,"W13":4.17,"W14":5.49,"W15":3.69,"W16":3.19,"W17":5.76},"frt":{"W10":10.81,"W11":10.9,"W12":12.64,"W13":12.07,"W14":13.25,"W15":12.38,"W16":12.65,"W17":13.08},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"SDK - Node JS","l4":"Others","metrics":{"count":{},"firstReply":{"W10":4.5,"W11":5.14,"W12":3.7,"W13":5.37,"W14":5,"W15":4.18,"W16":5.42,"W17":4.9},"frt":{"W10":11.53,"W11":12.86,"W12":10.86,"W13":12.65,"W14":12.26,"W15":12.18,"W16":12.83,"W17":11.43},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"SDK - Python","l4":"Setup Guide","metrics":{"count":{},"firstReply":{"W10":4.3,"W11":3.01,"W12":4.61,"W13":3.23},"frt":{"W10":10.08,"W11":11.52,"W12":11.98,"W13":11.85},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"SDK - Python","l4":"Integration Issue","metrics":{"count":{},"firstReply":{"W10":2.93,"W11":3.33,"W12":3.59,"W13":3.51},"frt":{"W10":11.13,"W11":11.46,"W12":12.06,"W13":10.15},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"SDK - Python","l4":"Authentication","metrics":{"count":{},"firstReply":{"W10":3.41,"W11":3.24,"W12":3.48,"W13":3.2},"frt":{"W10":11.54,"W11":10.68,"W12":11.4,"W13":10.04},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"SDK - Python","l4":"Others","metrics":{"count":{},"firstReply":{"W10":4.06,"W11":3.94,"W12":5.12,"W13":5.12},"frt":{"W10":11.39,"W11":10.54,"W12":11.66,"W13":11.68},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"White label Shop - Website","l4":"Website Design/Setup","metrics":{"count":{},"firstReply":{"W10":6.03,"W11":6.81,"W12":4.46,"W13":5.25,"W14":4.44,"W15":5.42,"W16":5.82,"W17":4.79},"frt":{"W10":16.07,"W11":15.34,"W12":16.13,"W13":15.51,"W14":14.41,"W15":12.78,"W16":13.25,"W17":14.41},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"White label Shop - Website","l4":"eSIM Sharing","metrics":{"count":{"W16":1},"firstReply":{"W10":6.96,"W11":4.92,"W12":6.04,"W13":4.51,"W14":6.2,"W15":3.83,"W16":3.85,"W17":5.96},"frt":{"W10":16.63,"W11":15.82,"W12":14.82,"W13":14.95,"W14":13.96,"W15":14.76,"W16":13.59,"W17":15.19},"csat":{"W16":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"White label Shop - Website","l4":"User Login Issue","metrics":{"count":{"W16":1},"firstReply":{"W10":4.64,"W11":3.91,"W12":4.24,"W13":4.37,"W14":3.64,"W15":4.3,"W16":3.85,"W17":5.83},"frt":{"W10":16.53,"W11":15.16,"W12":15.41,"W13":15.23,"W14":14.17,"W15":13.49,"W16":13.64,"W17":13.44},"csat":{"W16":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"White label Shop - Website","l4":"User Purchase Issue","metrics":{"count":{"W16":1},"firstReply":{"W10":3.87,"W11":7.46,"W12":6.05,"W13":4.9,"W14":6.8,"W15":3.97,"W16":4.8,"W17":5.76},"frt":{"W10":15.42,"W11":16.76,"W12":15.46,"W13":15.92,"W14":15.24,"W15":14.21,"W16":14.18,"W17":14.53},"csat":{"W16":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"White label Shop - Setting","l4":"Catalog - Price Set up","metrics":{"count":{},"firstReply":{"W10":3.59,"W11":3.99,"W12":3.88,"W13":4.56,"W14":3.72,"W15":3.39,"W16":5.15,"W17":4.01},"frt":{"W10":12.2,"W11":13.05,"W12":10.85,"W13":11.87,"W14":10.55,"W15":10.8,"W16":11.74,"W17":12.44},"csat":{},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"Integration","l3":"White label Shop - Setting","l4":"Catalog - eSIM Set up","metrics":{"count":{"W10":1,"W12":1,"W14":1,"W15":1,"W16":1},"firstReply":{"W10":3.59,"W11":5.19,"W12":5.1,"W13":5.32,"W14":5.02,"W15":5.4,"W16":2.85,"W17":3.74},"frt":{"W10":11.69,"W11":11.64,"W12":12.9,"W13":11.87,"W14":12.2,"W15":12.58,"W16":10.67,"W17":10.83},"csat":{"W10":99,"W12":98,"W14":99,"W15":100,"W16":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"OTA Partner","l3":"Account Setup","l4":null,"metrics":{"count":{"W10":2,"W11":2,"W12":2,"W13":2,"W14":2,"W15":1,"W16":1,"W17":2},"firstReply":{"W10":5.39,"W11":4.22,"W12":3.53,"W13":4.63,"W14":3.36,"W15":5.17,"W16":5.28,"W17":4.88},"frt":{"W10":13.76,"W11":14.71,"W12":13.67,"W13":14.91,"W14":13.15,"W15":11.71,"W16":13.87,"W17":14.02},"csat":{"W10":100,"W11":98,"W12":100,"W13":100,"W14":100,"W15":99,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"OTA Partner","l3":"Integration Issue","l4":null,"metrics":{"count":{"W10":1,"W11":1,"W12":1,"W13":2,"W14":2,"W15":1,"W16":2,"W17":2},"firstReply":{"W10":8.37,"W11":6,"W12":9.24,"W13":6.44,"W14":6.08,"W15":8.25,"W16":6.91,"W17":8.77},"frt":{"W10":22.29,"W11":21.89,"W12":22.06,"W13":20.52,"W14":21.51,"W15":19.09,"W16":19.42,"W17":21.75},"csat":{"W10":97,"W11":96,"W12":95,"W13":92,"W14":93,"W15":95,"W16":94,"W17":95},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"OTA Partner","l3":"Billing","l4":null,"metrics":{"count":{"W10":1,"W11":1,"W12":1,"W14":1,"W15":1,"W16":1,"W17":1},"firstReply":{"W10":5.03,"W11":4.62,"W12":6.27,"W13":7.53,"W14":4.33,"W15":5.59,"W16":6.08,"W17":4.41},"frt":{"W10":18.67,"W11":18.29,"W12":18.07,"W13":17.43,"W14":14.73,"W15":15,"W16":17.06,"W17":16.16},"csat":{"W10":100,"W11":100,"W12":99,"W14":98,"W15":100,"W16":100,"W17":100},"esc":{},"refunds":{}}},{"l1":"PX Support","l2":"OTA Partner","l3":"Others","l4":null,"metrics":{"count":{"W12":1,"W13":1,"W17":2},"firstReply":{"W10":3.19,"W11":2.68,"W12":3.44,"W13":2.11,"W14":1.95,"W15":1.85,"W16":3.17,"W17":2.76},"frt":{"W10":8.62,"W11":8.42,"W12":8.34,"W13":7.56,"W14":7.09,"W15":6.95,"W16":7.79,"W17":6.87},"csat":{"W12":97,"W13":100,"W17":100},"esc":{},"refunds":{}}}],"weeks":["W10","W11","W12","W13","W14","W15","W16","W17"],"l2_pairs":[["eSIM Support","eSIM Inquiry"],["eSIM Support","eSIM Installation"],["eSIM Support","eSIM Connection"],["eSIM Support","Calling/SMS"],["eSIM Support","User Behavior"],["PX Support","Partnership"],["PX Support","Partner Platform"],["PX Support","Integration"],["PX Support","OTA Partner"]]};
+let weekA = 'W15';
+let weekB = 'W16';
+let activeL2 = '__summary__';
+const charts = {};  // chart instances by canvas id
+
+// ============================================================
+// HELPERS
+// ============================================================
+const fmtNum = (n, dec=0) => (n == null || isNaN(n)) ? '—' : Number(n).toLocaleString('en-US', {minimumFractionDigits: dec, maximumFractionDigits: dec});
+const fmtPct = (n) => (n == null || isNaN(n)) ? '—' : (n * 100).toFixed(1) + '%';
+const fmtHr = (n) => (n == null || isNaN(n) || n === 0) ? '—' : Number(n).toFixed(2) + 'h';
+const fmtCsat = (n) => (n == null || isNaN(n) || n === 0) ? '—' : Number(n).toFixed(1) + '%';
+
+function rowsForL2(l2) {
+  return DATA.rows.filter(r => r.l2 === l2);
+}
+
+function sumWeek(rows, metric, week) {
+  let s = 0;
+  for (const r of rows) {
+    const v = r.metrics[metric] && r.metrics[metric][week];
+    if (typeof v === 'number') s += v;
+  }
+  return s;
+}
+
+function weightedAvgWeek(rows, metric, week) {
+  let num = 0, den = 0;
+  for (const r of rows) {
+    const c = r.metrics.count && r.metrics.count[week];
+    const v = r.metrics[metric] && r.metrics[metric][week];
+    if (typeof c === 'number' && typeof v === 'number' && c > 0) {
+      num += c * v;
+      den += c;
+    }
+  }
+  return den > 0 ? num / den : 0;
+}
+
+function delta(a, b) {
+  if (a === 0 && b === 0) return {abs: 0, pct: 0, dir: 'flat'};
+  const abs = b - a;
+  const pct = a !== 0 ? (b - a) / a : null;
+  const dir = abs > 0 ? 'up' : (abs < 0 ? 'down' : 'flat');
+  return {abs, pct, dir};
+}
+
+// destroy + recreate canvas
+function makeChart(id, config) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  charts[id] = new Chart(ctx, config);
+}
+
+// Color palette
+const COLORS = {
+  weekA: '#94a3b8',     // slate
+  weekB: '#3b82f6',     // blue
+  good: '#059669',
+  bad: '#dc2626',
+  donut: ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16','#f97316','#6366f1','#14b8a6','#a855f7'],
+};
+
+// ============================================================
+// KPI CARD HTML
+// ============================================================
+function kpiCard(label, value, valueClass, deltaText, deltaClass, footer) {
+  return `<div class="kpi-card">
+    <div class="label">${label}</div>
+    <div class="value ${valueClass||''}">${value}</div>
+    <div class="delta ${deltaClass||'flat'}">${deltaText||'&nbsp;'}</div>
+    <div class="footer">${footer||''}</div>
+  </div>`;
+}
+
+function deltaText(d, formatter, lowerIsBetter) {
+  if (d.dir === 'flat') return '◆ no change';
+  const arrow = d.dir === 'up' ? '▲' : '▼';
+  const abs = formatter(Math.abs(d.abs));
+  const pct = d.pct == null ? '' : ` (${(d.pct*100).toFixed(1)}%)`;
+  return `${arrow} ${abs}${pct}`;
+}
+
+function deltaClass(d, lowerIsBetter) {
+  if (d.dir === 'flat') return 'flat';
+  if (lowerIsBetter) return d.dir === 'down' ? 'down-bad' : 'up';
+  return d.dir === 'up' ? 'up-good' : 'down-bad';
+}
+
+// For volume metrics, we typically don't color by good/bad - just show movement
+function deltaClassNeutral(d) {
+  if (d.dir === 'flat') return 'flat';
+  return d.dir === 'up' ? 'up' : 'down';
+}
+
+// ============================================================
+// PAGE RENDERERS
+// ============================================================
+
+function renderSummary() {
+  const container = document.getElementById('dashboard-content');
+  const l2List = DATA.l2_pairs.map(p => ({l1: p[0], l2: p[1]}));
+
+  // Overall KPI cards
+  const allRows = DATA.rows;
+  const totA = sumWeek(allRows, 'count', weekA);
+  const totB = sumWeek(allRows, 'count', weekB);
+  const totD = delta(totA, totB);
+
+  const frtA = weightedAvgWeek(allRows, 'frt', weekA);
+  const frtB = weightedAvgWeek(allRows, 'frt', weekB);
+  const frtD = delta(frtA, frtB);
+
+  const frA = weightedAvgWeek(allRows, 'firstReply', weekA);
+  const frB = weightedAvgWeek(allRows, 'firstReply', weekB);
+  const frD = delta(frA, frB);
+
+  const csatA = weightedAvgWeek(allRows, 'csat', weekA);
+  const csatB = weightedAvgWeek(allRows, 'csat', weekB);
+  const csatD = delta(csatA, csatB);
+
+  const escA = sumWeek(allRows, 'esc', weekA);
+  const escB = sumWeek(allRows, 'esc', weekB);
+  const escD = delta(escA, escB);
+
+  const refA = sumWeek(allRows, 'refunds', weekA);
+  const refB = sumWeek(allRows, 'refunds', weekB);
+  const refD = delta(refA, refB);
+
+  let html = `
+    <div class="section-label">Summary — All Categories (${weekB})</div>
+    <div class="kpi-grid">
+      ${kpiCard('TOTAL TICKETS', fmtNum(totB), '', deltaText(totD, fmtNum), deltaClassNeutral(totD), `${weekA}: ${fmtNum(totA)}`)}
+      ${kpiCard('AVG FRT', fmtHr(frtB), '', deltaText(frtD, v=>v.toFixed(2)+'h'), deltaClass(frtD, true), `${weekA}: ${fmtHr(frtA)}`)}
+      ${kpiCard('AVG FIRST REPLY', fmtHr(frB), '', deltaText(frD, v=>v.toFixed(2)+'h'), deltaClass(frD, true), `${weekA}: ${fmtHr(frA)}`)}
+      ${kpiCard('AVG CSAT', fmtCsat(csatB), 'green', deltaText(csatD, v=>v.toFixed(1)+'%'), deltaClass(csatD, false), `${weekA}: ${fmtCsat(csatA)}`)}
+      ${kpiCard('ESCALATIONS', fmtNum(escB), escB>0?'red':'', deltaText(escD, fmtNum), deltaClass(escD, true), `${weekA}: ${fmtNum(escA)}`)}
+      ${kpiCard('REFUNDS', fmtNum(refB), refB>0?'red':'', deltaText(refD, fmtNum), deltaClass(refD, true), `${weekA}: ${fmtNum(refA)}`)}
+    </div>
+
+    <div class="section-label">Per-Segment Breakdown</div>
+    <div class="chart-grid">
+      <div class="chart-card">
+        <div class="chart-title">Ticket Volume by L2 — ${weekA} vs ${weekB}</div>
+        <div class="canvas-wrap"><canvas id="chart-summary-bar"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">${weekB} Ticket Distribution</div>
+        <div class="canvas-wrap"><canvas id="chart-summary-donut"></canvas></div>
+      </div>
+    </div>
+
+    <div class="section-label">Weekly Volume Trend</div>
+    <div class="chart-card" style="margin-top:0;">
+      <div class="chart-title">Tickets per Week — All Segments</div>
+      <div class="canvas-wrap"><canvas id="chart-summary-trend"></canvas></div>
+    </div>
+
+    <div class="section-label">Segment Comparison Table</div>
+    <div class="table-card">
+      <table>
+        <thead><tr>
+          <th>L2 Segment</th>
+          <th class="num">${weekA} Vol</th>
+          <th class="num">${weekB} Vol</th>
+          <th class="num">Δ Vol</th>
+          <th class="num">${weekB} FRT</th>
+          <th class="num">Δ FRT</th>
+          <th class="num">${weekB} CSAT</th>
+          <th class="num">Δ CSAT</th>
+          <th class="num">Esc</th>
+          <th class="num">Refunds</th>
+        </tr></thead>
+        <tbody>
+          ${l2List.map(p => {
+            const rs = rowsForL2(p.l2);
+            const a = sumWeek(rs, 'count', weekA);
+            const b = sumWeek(rs, 'count', weekB);
+            const d = delta(a, b);
+            const fA = weightedAvgWeek(rs, 'frt', weekA);
+            const fB = weightedAvgWeek(rs, 'frt', weekB);
+            const fD = delta(fA, fB);
+            const cA = weightedAvgWeek(rs, 'csat', weekA);
+            const cB = weightedAvgWeek(rs, 'csat', weekB);
+            const cD = delta(cA, cB);
+            const esc = sumWeek(rs, 'esc', weekB);
+            const ref = sumWeek(rs, 'refunds', weekB);
+            const arrow = (dir, neutral) => dir === 'up' ? '▲' : (dir === 'down' ? '▼' : '◆');
+            return `<tr>
+              <td><span class="badge ${p.l1==='eSIM Support'?'badge-yellow':'badge-blue'}">${p.l1}</span> ${p.l2}</td>
+              <td class="num">${fmtNum(a)}</td>
+              <td class="num">${fmtNum(b)}</td>
+              <td class="num delta-${d.dir}">${arrow(d.dir)} ${fmtNum(d.abs)}</td>
+              <td class="num">${fmtHr(fB)}</td>
+              <td class="num delta-${fD.dir==='up'?'up':(fD.dir==='down'?'down':'flat')}">${arrow(fD.dir)} ${Math.abs(fD.abs).toFixed(2)}h</td>
+              <td class="num">${fmtCsat(cB)}</td>
+              <td class="num delta-${cD.dir==='up'?'down':(cD.dir==='down'?'up':'flat')}">${arrow(cD.dir)} ${Math.abs(cD.abs).toFixed(1)}%</td>
+              <td class="num ${esc>0?'delta-up':''}">${esc||'—'}</td>
+              <td class="num ${ref>0?'delta-up':''}">${ref||'—'}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  container.innerHTML = html;
+
+  // Charts
+  const labels = l2List.map(p => p.l2);
+  const dataA = l2List.map(p => sumWeek(rowsForL2(p.l2), 'count', weekA));
+  const dataB = l2List.map(p => sumWeek(rowsForL2(p.l2), 'count', weekB));
+
+  makeChart('chart-summary-bar', {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        {label: weekA, data: dataA, backgroundColor: COLORS.weekA},
+        {label: weekB, data: dataB, backgroundColor: COLORS.weekB},
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { y: { beginAtZero: true, title: {display:true, text:'Tickets'} } },
+      plugins: { legend: { position: 'top' } }
+    }
+  });
+
+  makeChart('chart-summary-donut', {
+    type: 'doughnut',
+    data: {
+      labels: labels,
+      datasets: [{ data: dataB, backgroundColor: COLORS.donut.slice(0, labels.length) }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { boxWidth: 12, font:{size:11} } },
+        tooltip: { callbacks: { label: (ctx) => {
+          const total = ctx.dataset.data.reduce((a,b)=>a+b,0);
+          const pct = total ? ((ctx.parsed/total)*100).toFixed(1) : 0;
+          return `${ctx.label}: ${ctx.parsed} (${pct}%)`;
+        }}}
+      }
+    }
+  });
+
+  // Trend over all weeks
+  const trendDatasets = l2List.map((p, i) => ({
+    label: p.l2,
+    data: DATA.weeks.map(w => sumWeek(rowsForL2(p.l2), 'count', w)),
+    borderColor: COLORS.donut[i % COLORS.donut.length],
+    backgroundColor: COLORS.donut[i % COLORS.donut.length] + '20',
+    tension: 0.3,
+    pointRadius: 3,
+    borderWidth: 2,
+  }));
+  makeChart('chart-summary-trend', {
+    type: 'line',
+    data: { labels: DATA.weeks, datasets: trendDatasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { y: { beginAtZero: true, title: {display:true, text:'Tickets'} } },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font:{size:11} } } }
+    }
+  });
+}
+
+function renderL2(l2Name) {
+  const container = document.getElementById('dashboard-content');
+  const rows = rowsForL2(l2Name);
+
+  if (!rows.length) {
+    container.innerHTML = `<div class="empty-state">No data for "${l2Name}"</div>`;
+    return;
+  }
+
+  const totA = sumWeek(rows, 'count', weekA);
+  const totB = sumWeek(rows, 'count', weekB);
+  const totD = delta(totA, totB);
+
+  const frtA = weightedAvgWeek(rows, 'frt', weekA);
+  const frtB = weightedAvgWeek(rows, 'frt', weekB);
+  const frtD = delta(frtA, frtB);
+
+  const frA = weightedAvgWeek(rows, 'firstReply', weekA);
+  const frB = weightedAvgWeek(rows, 'firstReply', weekB);
+  const frD = delta(frA, frB);
+
+  const csatA = weightedAvgWeek(rows, 'csat', weekA);
+  const csatB = weightedAvgWeek(rows, 'csat', weekB);
+  const csatD = delta(csatA, csatB);
+
+  const escA = sumWeek(rows, 'esc', weekA);
+  const escB = sumWeek(rows, 'esc', weekB);
+  const escD = delta(escA, escB);
+
+  const refA = sumWeek(rows, 'refunds', weekA);
+  const refB = sumWeek(rows, 'refunds', weekB);
+  const refD = delta(refA, refB);
+
+  // L3 breakdown
+  const l3Set = [...new Set(rows.map(r => r.l3).filter(Boolean))];
+
+  let html = `
+    <div class="section-label">Summary — ${l2Name} (${weekB})</div>
+    <div class="kpi-grid">
+      ${kpiCard('TOTAL TICKETS', fmtNum(totB), '', deltaText(totD, fmtNum), deltaClassNeutral(totD), `${weekA}: ${fmtNum(totA)}`)}
+      ${kpiCard('AVG FRT', fmtHr(frtB), '', deltaText(frtD, v=>v.toFixed(2)+'h'), deltaClass(frtD, true), `${weekA}: ${fmtHr(frtA)}`)}
+      ${kpiCard('AVG FIRST REPLY', fmtHr(frB), '', deltaText(frD, v=>v.toFixed(2)+'h'), deltaClass(frD, true), `${weekA}: ${fmtHr(frA)}`)}
+      ${kpiCard('AVG CSAT', fmtCsat(csatB), 'green', deltaText(csatD, v=>v.toFixed(1)+'%'), deltaClass(csatD, false), `${weekA}: ${fmtCsat(csatA)}`)}
+      ${kpiCard('ESCALATIONS', fmtNum(escB), escB>0?'red':'', deltaText(escD, fmtNum), deltaClass(escD, true), `${weekA}: ${fmtNum(escA)}`)}
+      ${kpiCard('REFUNDS', fmtNum(refB), refB>0?'red':'', deltaText(refD, fmtNum), deltaClass(refD, true), `${weekA}: ${fmtNum(refA)}`)}
+    </div>
+
+    <div class="section-label">L3 Breakdown — ${weekA} vs ${weekB}</div>
+    <div class="chart-grid">
+      <div class="chart-card">
+        <div class="chart-title">Tickets by Sub-Category</div>
+        <div class="canvas-wrap"><canvas id="chart-l2-bar"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">${weekB} Distribution</div>
+        <div class="canvas-wrap"><canvas id="chart-l2-donut"></canvas></div>
+      </div>
+    </div>
+
+    <div class="section-label">Weekly Trend — ${l2Name}</div>
+    <div class="chart-grid">
+      <div class="chart-card">
+        <div class="chart-title">Ticket Volume Over Weeks</div>
+        <div class="canvas-wrap"><canvas id="chart-l2-vol-trend"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Avg FRT & First Reply (hours)</div>
+        <div class="canvas-wrap"><canvas id="chart-l2-time-trend"></canvas></div>
+      </div>
+    </div>
+
+    <div class="section-label">L3 Detail Table</div>
+    <div class="table-card">
+      <table>
+        <thead><tr>
+          <th>L3 Sub-Category</th>
+          <th class="num">${weekA} Vol</th>
+          <th class="num">${weekB} Vol</th>
+          <th class="num">Δ Vol</th>
+          <th class="num">${weekB} FRT</th>
+          <th class="num">Δ FRT</th>
+          <th class="num">${weekB} CSAT</th>
+          <th class="num">Esc (B)</th>
+          <th class="num">Refunds (B)</th>
+        </tr></thead>
+        <tbody>
+          ${l3Set.map(l3 => {
+            const sub = rows.filter(r => r.l3 === l3);
+            const a = sumWeek(sub, 'count', weekA);
+            const b = sumWeek(sub, 'count', weekB);
+            const d = delta(a, b);
+            const fB = weightedAvgWeek(sub, 'frt', weekB);
+            const fA = weightedAvgWeek(sub, 'frt', weekA);
+            const fD = delta(fA, fB);
+            const cB = weightedAvgWeek(sub, 'csat', weekB);
+            const esc = sumWeek(sub, 'esc', weekB);
+            const ref = sumWeek(sub, 'refunds', weekB);
+            const arrow = (dir) => dir === 'up' ? '▲' : (dir === 'down' ? '▼' : '◆');
+            return `<tr>
+              <td><strong>${l3}</strong></td>
+              <td class="num">${fmtNum(a)}</td>
+              <td class="num">${fmtNum(b)}</td>
+              <td class="num delta-${d.dir}">${arrow(d.dir)} ${fmtNum(d.abs)}</td>
+              <td class="num">${fmtHr(fB)}</td>
+              <td class="num delta-${fD.dir==='up'?'up':(fD.dir==='down'?'down':'flat')}">${arrow(fD.dir)} ${Math.abs(fD.abs).toFixed(2)}h</td>
+              <td class="num">${fmtCsat(cB)}</td>
+              <td class="num ${esc>0?'delta-up':''}">${esc||'—'}</td>
+              <td class="num ${ref>0?'delta-up':''}">${ref||'—'}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  container.innerHTML = html;
+
+  // Charts
+  const labels = l3Set;
+  const dataA = l3Set.map(l3 => sumWeek(rows.filter(r => r.l3 === l3), 'count', weekA));
+  const dataB = l3Set.map(l3 => sumWeek(rows.filter(r => r.l3 === l3), 'count', weekB));
+
+  makeChart('chart-l2-bar', {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        {label: weekA, data: dataA, backgroundColor: COLORS.weekA},
+        {label: weekB, data: dataB, backgroundColor: COLORS.weekB},
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { y: { beginAtZero: true, title: {display:true, text:'Tickets'} } },
+      plugins: { legend: { position: 'top' } }
+    }
+  });
+
+  makeChart('chart-l2-donut', {
+    type: 'doughnut',
+    data: { labels: labels, datasets: [{ data: dataB, backgroundColor: COLORS.donut.slice(0, labels.length) }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { boxWidth: 12, font:{size:11} } },
+        tooltip: { callbacks: { label: (ctx) => {
+          const total = ctx.dataset.data.reduce((a,b)=>a+b,0);
+          const pct = total ? ((ctx.parsed/total)*100).toFixed(1) : 0;
+          return `${ctx.label}: ${ctx.parsed} (${pct}%)`;
+        }}}
+      }
+    }
+  });
+
+  // Volume trend (per L3)
+  const volDatasets = l3Set.map((l3, i) => ({
+    label: l3,
+    data: DATA.weeks.map(w => sumWeek(rows.filter(r => r.l3 === l3), 'count', w)),
+    borderColor: COLORS.donut[i % COLORS.donut.length],
+    backgroundColor: COLORS.donut[i % COLORS.donut.length] + '20',
+    tension: 0.3, pointRadius: 3, borderWidth: 2,
+  }));
+  makeChart('chart-l2-vol-trend', {
+    type: 'line',
+    data: { labels: DATA.weeks, datasets: volDatasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { y: { beginAtZero: true } },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font:{size:11} } } }
+    }
+  });
+
+  // Time trend (FRT + First Reply)
+  makeChart('chart-l2-time-trend', {
+    type: 'line',
+    data: {
+      labels: DATA.weeks,
+      datasets: [
+        {label: 'Avg FRT (hr)', data: DATA.weeks.map(w => weightedAvgWeek(rows, 'frt', w)),
+          borderColor: '#3b82f6', backgroundColor: '#3b82f620', tension: 0.3, borderWidth: 2, pointRadius: 3},
+        {label: 'Avg First Reply (hr)', data: DATA.weeks.map(w => weightedAvgWeek(rows, 'firstReply', w)),
+          borderColor: '#f59e0b', backgroundColor: '#f59e0b20', tension: 0.3, borderWidth: 2, pointRadius: 3},
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { y: { beginAtZero: true, title: {display:true, text:'Hours'} } },
+      plugins: { legend: { position: 'bottom' } }
+    }
+  });
+}
+
+// ============================================================
+// CONTROLS WIRING
+// ============================================================
+function populateWeekSelectors() {
+  const a = document.getElementById('weekA');
+  const b = document.getElementById('weekB');
+  a.innerHTML = ''; b.innerHTML = '';
+  DATA.weeks.forEach(w => {
+    a.appendChild(new Option(w, w));
+    b.appendChild(new Option(w, w));
+  });
+  if (!DATA.weeks.includes(weekA)) weekA = DATA.weeks[Math.max(0, DATA.weeks.length - 2)];
+  if (!DATA.weeks.includes(weekB)) weekB = DATA.weeks[DATA.weeks.length - 1];
+  a.value = weekA;
+  b.value = weekB;
+  a.onchange = () => { weekA = a.value; render(); };
+  b.onchange = () => { weekB = b.value; render(); };
+}
+
+function bindNav() {
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.onclick = () => {
+      activeL2 = el.dataset.l2;
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      el.classList.add('active');
+      render();
+    };
+  });
+  // default active
+  const def = document.querySelector(`.nav-item[data-l2="${activeL2}"]`);
+  if (def) def.classList.add('active');
+}
+
+function render() {
+  // Update title
+  const titleEl = document.getElementById('page-title');
+  const subEl = document.getElementById('page-subtitle');
+  if (activeL2 === '__summary__') {
+    titleEl.firstChild.textContent = 'All Categories';
+    subEl.textContent = `Cross-segment overview · ${weekA} vs ${weekB}`;
+    renderSummary();
+  } else {
+    titleEl.firstChild.textContent = activeL2;
+    const pair = DATA.l2_pairs.find(p => p[1] === activeL2);
+    subEl.textContent = `${pair ? pair[0] : ''} · ${weekA} vs ${weekB}`;
+    renderL2(activeL2);
+  }
+}
+
+// ============================================================
+// EXCEL FILE LOADER (SheetJS)
+// ============================================================
+const SHEET_MAP = {
+  count: 'Input_Count',
+  firstReply: 'Input_FirstReply',
+  frt: 'Input_FRT',
+  csat: 'Input_Satisfaction',
+  esc: 'Input_Escalations',
+  refunds: 'Input_Refunds',
+};
+
+document.getElementById('file-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const status = document.getElementById('file-status');
+  status.textContent = 'Loading…';
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, {type: 'array'});
+
+    // Read each Input_* sheet as 2D array
+    const sheetData = {};
+    for (const [key, name] of Object.entries(SHEET_MAP)) {
+      const sh = wb.Sheets[name];
+      if (!sh) throw new Error(`Sheet "${name}" not found`);
+      sheetData[key] = XLSX.utils.sheet_to_json(sh, {header: 1, defval: null});
+    }
+
+    // Parse: header row is row 2 (index 1). Data starts row 3 (index 2).
+    // Cols: A=L1, B=L2, C=L3, D=L4. Week columns start at E (index 4).
+    const HEADER_ROW = 1;
+    const DATA_START = 2;
+    const WEEK_START_COL = 4;
+
+    const baseRows = sheetData.count;
+    const headerRow = baseRows[HEADER_ROW] || [];
+    const weekNames = [];
+    for (let c = WEEK_START_COL; c < headerRow.length; c++) {
+      if (headerRow[c]) weekNames.push({col: c, name: String(headerRow[c])});
+    }
+
+    const rows = [];
+    const seenL2Pairs = [];
+    for (let r = DATA_START; r < baseRows.length; r++) {
+      const rowArr = baseRows[r];
+      if (!rowArr) continue;
+      const l1 = rowArr[0], l2 = rowArr[1], l3 = rowArr[2], l4 = rowArr[3];
+      if (!l1) continue;
+      const pair = [l1, l2];
+      if (!seenL2Pairs.find(p => p[0] === l1 && p[1] === l2)) seenL2Pairs.push(pair);
+      const row = {l1, l2, l3, l4, metrics: {}};
+      for (const [key, _] of Object.entries(SHEET_MAP)) {
+        const sh = sheetData[key];
+        const wkData = {};
+        for (const w of weekNames) {
+          const v = sh[r] && sh[r][w.col];
+          if (typeof v === 'number' && v !== 0) wkData[w.name] = v;
+        }
+        row.metrics[key] = wkData;
+      }
+      rows.push(row);
+    }
+
+    // Detect weeks with any data
+    const weeksWithData = new Set();
+    for (const row of rows) {
+      for (const k in row.metrics) {
+        for (const wk in row.metrics[k]) weeksWithData.add(wk);
+      }
+    }
+    const weeks = [...weeksWithData].sort();
+
+    DATA = {rows, weeks, l2_pairs: seenL2Pairs};
+    populateWeekSelectors();
+    render();
+    status.textContent = `✓ Loaded "${file.name}" (${rows.length} rows · ${weeks.length} weeks)`;
+    status.style.color = '#059669';
+  } catch (err) {
+    console.error(err);
+    status.textContent = `✗ Error: ${err.message}`;
+    status.style.color = '#dc2626';
+  }
+});
+
+// ============================================================
+// BOOT (only after unlock)
+// ============================================================
+let _booted = false;
+function bootDashboard() {
+  if (_booted) return;
+  _booted = true;
+  populateWeekSelectors();
+  bindNav();
+  render();
+}
+
+// If sessionStorage says already unlocked, boot now
+try {
+  if (sessionStorage.getItem('psd_unlocked') === '1') {
+    bootDashboard();
+  }
+} catch(e) {}
+</script>
+</body>
+</html>
